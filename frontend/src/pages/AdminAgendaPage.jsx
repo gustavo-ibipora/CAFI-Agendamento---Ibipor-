@@ -19,9 +19,18 @@ const ROTULOS_STATUS = {
 };
 
 const ITENS_POR_PAGINA = 10;
+const INTERVALO_ATUALIZACAO_MS = 8000;
+const DURACAO_DESTAQUE_MS = 1600;
 
 export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaInicial = 'agenda' }) {
   const agendaRequestRef = useRef(0);
+  const filtrosRef = useRef({ data: '', ubs: '', medicamento: '', status: '', busca: '' });
+  const agendamentosRef = useRef([]);
+  const detalheRef = useRef(null);
+  const confirmacaoRef = useRef(null);
+  const carregandoRef = useRef(false);
+  const atualizacaoSilenciosaEmVooRef = useRef(false);
+  const destaqueTimeoutRef = useRef(null);
   const detalheModalRef = useRef(null);
   const detalheFecharRef = useRef(null);
   const detalheBotaoAnteriorRef = useRef(null);
@@ -53,6 +62,14 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   const [paginaAgenda, setPaginaAgenda] = useState(1);
   const [confirmacao, setConfirmacao] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [idsAtualizados, setIdsAtualizados] = useState(() => new Set());
+
+  // Refs sincronizadas a cada render para leitura sem "stale closures" dentro do polling em segundo plano.
+  filtrosRef.current = { data, ubs, medicamento, status: statusFiltro, busca: buscaAgenda };
+  agendamentosRef.current = agendamentos;
+  detalheRef.current = detalhe;
+  confirmacaoRef.current = confirmacao;
+  carregandoRef.current = carregando;
 
   useEffect(() => {
     verificarSessao();
@@ -78,6 +95,42 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
 
     return () => clearTimeout(timeout);
   }, [verificado, abaAtiva, data, ubs, medicamento, statusFiltro, buscaAgenda]);
+
+  // Atualização em segundo plano: mantém a agenda em dia entre operadores sem
+  // recarregar a tabela nem piscar a tela — só re-renderiza quando algo realmente muda.
+  useEffect(() => {
+    if (!verificado || abaAtiva !== 'agenda') return undefined;
+
+    const intervalo = setInterval(() => {
+      if (document.hidden) return;
+      if (carregandoRef.current || atualizacaoSilenciosaEmVooRef.current) return;
+      if (detalheRef.current || confirmacaoRef.current) return;
+      atualizarAgendaSilenciosa();
+    }, INTERVALO_ATUALIZACAO_MS);
+
+    return () => clearInterval(intervalo);
+  }, [verificado, abaAtiva]);
+
+  // Ao voltar para a aba do navegador, atualiza na hora em vez de esperar o próximo ciclo.
+  useEffect(() => {
+    if (!verificado || abaAtiva !== 'agenda') return undefined;
+
+    function aoMudarVisibilidade() {
+      if (document.hidden) return;
+      if (carregandoRef.current || atualizacaoSilenciosaEmVooRef.current) return;
+      if (detalheRef.current || confirmacaoRef.current) return;
+      atualizarAgendaSilenciosa();
+    }
+
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+    return () => document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+  }, [verificado, abaAtiva]);
+
+  useEffect(() => {
+    return () => {
+      if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (detalhe) {
@@ -191,6 +244,64 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       setErro(err.message || 'Erro ao carregar agenda.');
     } finally {
       if (requestId === agendaRequestRef.current) setCarregando(false);
+    }
+  }
+
+  function assinaturaAgendamento(ag) {
+    return [ag.status, ag.horario, ag.data_agendamento, ag.presente_em, ag.atendido_em, ag.updated_at].join('|');
+  }
+
+  function aplicarAtualizacaoSilenciosa(novaLista) {
+    const atual = agendamentosRef.current;
+    const mapaAtual = new Map(atual.map((ag) => [ag.id, ag]));
+    const idsMudados = [];
+    let mudou = atual.length !== novaLista.length;
+
+    novaLista.forEach((novo) => {
+      const anterior = mapaAtual.get(novo.id);
+      if (!anterior || assinaturaAgendamento(anterior) !== assinaturaAgendamento(novo)) {
+        mudou = true;
+        idsMudados.push(novo.id);
+      }
+    });
+
+    if (!mudou) return; // nada mudou: nenhum re-render, nenhuma piscada
+
+    setAgendamentos(novaLista);
+    setResumo(criarResumo(novaLista, filtrosRef.current.busca));
+
+    if (idsMudados.length > 0) {
+      setIdsAtualizados(new Set(idsMudados));
+      if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
+      destaqueTimeoutRef.current = setTimeout(() => setIdsAtualizados(new Set()), DURACAO_DESTAQUE_MS);
+    }
+
+    const totalPaginas = Math.max(1, Math.ceil(novaLista.length / ITENS_POR_PAGINA));
+    setPaginaAgenda((paginaAtual) => Math.min(paginaAtual, totalPaginas));
+  }
+
+  async function atualizarAgendaSilenciosa() {
+    const filtros = filtrosRef.current;
+    if (!filtros.data) return;
+    const buscaNormalizada = filtros.busca.trim();
+    if (buscaNormalizada.length === 1) return;
+
+    const params = new URLSearchParams({ data: filtros.data });
+    if (filtros.ubs) params.set('ubs', filtros.ubs);
+    if (filtros.medicamento) params.set('tipo_medicamento', filtros.medicamento);
+    if (filtros.status) params.set('status', filtros.status);
+    if (buscaNormalizada) params.set('busca', buscaNormalizada);
+
+    atualizacaoSilenciosaEmVooRef.current = true;
+    try {
+      const dados = await apiJson(`/api/admin/agendamentos?${params.toString()}`);
+      aplicarAtualizacaoSilenciosa(dados.agendamentos || []);
+    } catch (err) {
+      if (err.status === 401) navigate('/admin/login');
+      // Outros erros no polling silencioso são ignorados de propósito: não interrompe o operador,
+      // a próxima tentativa (em INTERVALO_ATUALIZACAO_MS) resolve sozinha se a rede voltar.
+    } finally {
+      atualizacaoSilenciosaEmVooRef.current = false;
     }
   }
 
@@ -431,12 +542,12 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     }
   }
 
-  function criarResumo(lista) {
+  function criarResumo(lista, buscaTexto = buscaAgenda) {
     const totalVagas = lista
       .filter((a) => a.status !== 'cancelado')
       .reduce((soma, a) => soma + a.vagas_ocupadas, 0);
     const totalAtb = lista.filter((a) => a.tipo_medicamento === 'Antibiotico' && a.status !== 'cancelado').length;
-    const sufixo = buscaAgenda.trim() ? ' - busca global' : '';
+    const sufixo = buscaTexto.trim() ? ' - busca global' : '';
     return `${lista.length} agendamento(s) - ${totalVagas} vaga(s) ocupada(s) - ${totalAtb} de Antibiotico${sufixo}`;
   }
 
@@ -667,7 +778,7 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
                   <td colSpan="7">Nenhum agendamento encontrado para os filtros selecionados.</td>
                 </tr>
               ) : agendamentosPagina.map((ag) => (
-                <tr key={ag.id}>
+                <tr key={ag.id} className={idsAtualizados.has(ag.id) ? 'linha-atualizada' : undefined}>
                   <td className="coluna-data" data-label="Data">{dataBrasil(ag.data_agendamento)}</td>
                   <td className="coluna-horario" data-label="Horário">{String(ag.horario || '').slice(0, 5)}</td>
                   <td className="celula-principal" data-label="Paciente">

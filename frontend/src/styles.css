@@ -588,7 +588,15 @@ input.campo-valido {
   display: grid;
   gap: 6px;
   min-width: 0;
+  min-height: 168px;
   justify-items: stretch;
+  align-content: start;
+}
+
+/* Sem botões de status (agendamento já finalizado): centraliza o "Detalhes"
+   na linha, alinhado com a tag de status ao lado, em vez de ficar colado no topo. */
+.acoes-tabela:has(> .botao-detalhes:only-child) {
+  align-content: center;
 }
 
 .acoes-tabela .botao-tabela, .acoes-status .botao-tabela {
@@ -1129,6 +1137,16 @@ input.campo-valido {
   to { background-position: -200% 0; }
 }
 
+/* Destaque discreto para linhas atualizadas pelo polling em segundo plano da agenda. */
+.tabela-agenda tbody tr.linha-atualizada {
+  animation: destacarLinhaAtualizada 1.6s ease-out;
+}
+
+@keyframes destacarLinhaAtualizada {
+  0% { background-color: #fff3c4; }
+  100% { background-color: transparent; }
+}
+
 /* =============================================
    RESPONSIVO MOBILE — COMPONENTES
    ============================================= */
@@ -1320,6 +1338,7 @@ input.campo-valido {
     display: grid !important;
     grid-template-columns: 82px minmax(0, 1fr) !important;
     align-items: stretch;
+    min-height: auto;
   }
 
   .acoes-tabela::before {
