@@ -1,0 +1,42 @@
+{
+  "name": "farmacia-ibipora-backend",
+  "version": "1.0.0",
+  "description": "Sistema de agendamento para retirada de medicamentos - CAFI",
+  "main": "server.js",
+  "scripts": {
+    "start": "nodemon server.js",
+    "dev": "node --watch server.js",
+    "create-admin": "node scripts/criar-admin.js",
+    "set-admin-active": "node scripts/definir-admin-ativo.js",
+    "migrate:security": "node scripts/migrar-seguranca.js",
+    "migrate:validation": "node scripts/migrar-validacao-regras.js",
+    "migrate:database": "node scripts/migrar-banco-dados.js",
+    "migrate:email": "node scripts/migrar-email.js",
+    "migrate:patients": "node scripts/migrar-pacientes.js",
+    "migrate:blocks": "node scripts/migrar-bloqueios-agenda.js",
+    "migrate:profiles": "node scripts/migrar-perfil-admin.js",
+    "migrate:admin-search-indexes": "node scripts/migrar-indices-busca-admin.js",
+    "migrate:audit": "node scripts/migrar-auditoria-operacao.js",
+    "migrate:receita": "node scripts/migrar-receita-agendamento.js",
+    "seed:full-day": "node scripts/seed-agenda-cheia-20260703.js",
+    "test": "node --test test"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-mysql-session": "^3.0.3",
+    "express-rate-limit": "^8.5.2",
+    "express-session": "^1.18.0",
+    "helmet": "^8.2.0",
+    "multer": "^2.2.0",
+    "mysql2": "^3.16.0",
+    "nodemailer": "^9.0.3",
+    "nodemon": "^3.1.14",
+    "zod": "^4.4.3"
+  }
+}
