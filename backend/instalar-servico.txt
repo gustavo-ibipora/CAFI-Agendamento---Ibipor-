@@ -1,0 +1,42 @@
+1. Abrir terminal como Administrador
+Menu Iniciar → PowerShell (ou Prompt de Comando) → botão direito → "Executar como administrador".
+
+2. Ir até a pasta backend e abrir o instalador gráfico
+
+cd "e:\Gustavo\Code\farmacia-cafi-git\CAFI-Agendamento---Ibipor-\backend"
+.\nssm.exe install CafiAgendamentoBackend
+Isso abre uma janela gráfica do NSSM (não fecha o terminal).
+
+3. Aba "Application"
+Path: caminho do node.exe. Descubra com (Get-Command node).Source no PowerShell (geralmente algo como C:\Program Files\nodejs\node.exe).
+Startup directory: a pasta backend completa (ex.: E:\Gustavo\Code\farmacia-cafi-git\CAFI-Agendamento---Ibipor-\backend).
+Arguments: server.js
+4. Aba "Details"
+Display name: CAFI Agendamento - Backend
+Description: API do sistema de agendamento da farmacia (CAFI Ibipora).
+Startup type: Automatic (inicia sozinho com o Windows)
+5. Aba "Environment"
+No campo de variáveis extras, adicione:
+
+
+NODE_ENV=production
+6. Aba "I/O" (logs)
+Output (stdout): E:\...\backend\logs\servico.log
+Error (stderr): E:\...\backend\logs\servico-erro.log
+Crie a pasta backend\logs antes, se não existir (mkdir logs), senão o NSSM pode reclamar do caminho.
+
+7. Aba "Rotation" (evita o log crescer sem limite)
+Marque "Rotate files"
+Marque "Rotate while service is running"
+Rotate when file size exceeds: 10485760 (10 MB) — ou o campo em MB, dependendo da versão, coloque 10
+Rotate after date/time change: intervalo de 86400 segundos (24h)
+8. Aba "Exit actions"
+Action: Restart application (para reiniciar sozinho se o Node cair)
+Delay restart by: 5000 ms
+9. Confirmar
+Clique em "Install service".
+
+10. Iniciar o serviço
+
+.\nssm.exe start CafiAgendamentoBackend
+.\nssm.exe status CafiAgendamentoBackend

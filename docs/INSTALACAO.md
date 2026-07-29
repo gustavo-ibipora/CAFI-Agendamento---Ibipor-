@@ -119,6 +119,38 @@ Administradores podem consultar esses eventos no painel em `Logs`.
 - Apenas agendamentos com status `cancelado` liberam vaga.
 - Agendamentos `confirmado`, `atendido` e `faltou` continuam ocupando capacidade.
 
+## Instalar o backend como servico Windows (producao)
+
+O backend deve rodar em producao como servico Windows (nao com `npm start`/`nodemon` em um terminal aberto), usando o NSSM incluido em `backend\nssm.exe`.
+
+1. Configure `backend\.env` com os dados de producao (MySQL, `SESSION_SECRET` forte, `SESSION_COOKIE_SECURE=true`, `CORS_ORIGIN`, etc.) e rode as migracoes necessarias.
+2. Abra o PowerShell **como Administrador** (menu Iniciar -> PowerShell -> botao direito -> "Executar como administrador"). Nao use duplo-clique no arquivo `.ps1`: o Windows abre e fecha a janela sozinho, sem dar tempo de ler um eventual erro.
+3. Dentro do PowerShell aberto como Administrador, execute:
+
+   ```powershell
+   cd backend
+   .\scripts\install-service.ps1
+   ```
+
+   Se aparecer um erro sobre politica de execucao de scripts ("running scripts is disabled"), rode assim:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+   ```
+
+   O script agora sempre para no final (sucesso ou erro) e pede para apertar Enter antes de fechar, para dar tempo de ler a mensagem.
+
+   O script cria o servico `CafiAgendamentoBackend` configurado para:
+   - iniciar automaticamente com o Windows (`SERVICE_AUTO_START`);
+   - reiniciar sozinho se o processo cair (`AppExit Default Restart`);
+   - rodar com `NODE_ENV=production`;
+   - gravar stdout/stderr em `backend\logs\servico.log` e `backend\logs\servico-erro.log`, com rotacao automatica (por tamanho de 10 MB ou a cada 24h), evitando que o log cresca sem limite.
+
+4. Verifique o status: `backend\nssm.exe status CafiAgendamentoBackend`.
+5. Para remover o servico (ex.: antes de reinstalar): `.\scripts\uninstall-service.ps1` (tambem como Administrador).
+
+O IIS deve ficar apenas com o proxy reverso para `http://127.0.0.1:3000` (ver `frontend\dist\web.config`); quem mantem o processo Node vivo e reiniciado em caso de queda/reboot do servidor e o servico NSSM, nao o IIS.
+
 ## Operacao em producao
 
 - Backup do banco: executar dump diario do MySQL, armazenar copia fora do servidor e testar restauracao mensalmente. Exemplo: `mysqldump -u usuario -p farmacia_ibipora > backup-farmacia-YYYY-MM-DD.sql`.
@@ -128,7 +160,7 @@ Administradores podem consultar esses eventos no painel em `Logs`.
 
 ## Iniciar o sistema
 
-Para uso normal:
+Para rodar manualmente em primeiro plano (teste local/depuracao):
 
 ```powershell
 cd backend
@@ -141,6 +173,8 @@ Para desenvolvimento com reinicio automatico do Node.js:
 cd backend
 npm run dev
 ```
+
+Em producao, nao use `npm start` num terminal aberto — instale como servico Windows (veja "Instalar o backend como servico Windows" acima), para que o processo sobreviva a reinicializacoes do servidor e reinicie sozinho em caso de falha.
 
 Depois acesse:
 
