@@ -202,7 +202,7 @@ export default function AdminReportsPage() {
           <button type="button" className="secundario" disabled={!relatorio} onClick={exportarCsv}>Exportar CSV (Resumo)</button>
         </div>
         <div className="campo">
-          <button type="button" className="secundario" style={{ borderColor: '#217346', color: '#217346' }} onClick={exportarXLS}>Lista de Presença (XLS)</button>
+          <button type="button" className="secundario" style={{ borderColor: '#217346', color: '#217346' }} onClick={exportarXLS}>Lista de Pacientes (XLS)</button>
         </div>
       </form>
 
