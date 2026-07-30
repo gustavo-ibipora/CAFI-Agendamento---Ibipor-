@@ -8,7 +8,7 @@ export default function HomePage() {
         <div className="destaque-texto">
           <h2>Agendamento de retirada de medicamentos</h2>
           <p>
-            O CAFI organiza a retirada de medicamentos
+            A Farmácia Municipal organiza a retirada de medicamentos
             por agendamento para reduzir filas e facilitar o atendimento.
           </p>
           <p>

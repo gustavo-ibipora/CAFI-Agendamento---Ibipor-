@@ -60,7 +60,7 @@ export default function Header({ subtitle, pathname = window.location.pathname, 
 
         <div className="titulos">
           <p className="titulo-institucional">Prefeitura Municipal de Ibiporã-PR</p>
-          <p>Central de Abastecimento Farmacêutico - {subtitle}</p>
+          <p>Farmácia Municipal - {subtitle}</p>
         </div>
 
         {children && (

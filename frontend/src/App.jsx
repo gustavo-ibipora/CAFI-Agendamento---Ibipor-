@@ -10,15 +10,15 @@ import AdminAgendaPage from './pages/AdminAgendaPage.jsx';
 import ChangePasswordPage from './pages/ChangePasswordPage.jsx';
 
 const TITLES = {
-  '/': 'CAFI - Agendamento',
-  '/agendamento': 'Agendar retirada - CAFI',
-  '/confirmacao': 'Agendamento confirmado - CAFI',
-  '/admin/login': 'Painel administrativo - CAFI',
-  '/admin/agenda': 'Agenda do dia - CAFI',
-  '/admin/alterar-senha': 'Alterar senha - CAFI',
-  '/admin/usuarios': 'Gerenciar usuários - CAFI',
-  '/admin/logs': 'Logs administrativos - CAFI',
-  '/admin/relatorios': 'Relatorios de agendamentos - CAFI'
+  '/': 'Farmácia Municipal - Agendamento',
+  '/agendamento': 'Agendar retirada - Farmácia Municipal',
+  '/confirmacao': 'Agendamento confirmado - Farmácia Municipal',
+  '/admin/login': 'Painel administrativo - Farmácia Municipal',
+  '/admin/agenda': 'Agenda do dia - Farmácia Municipal',
+  '/admin/alterar-senha': 'Alterar senha - Farmácia Municipal',
+  '/admin/usuarios': 'Gerenciar usuários - Farmácia Municipal',
+  '/admin/logs': 'Logs administrativos - Farmácia Municipal',
+  '/admin/relatorios': 'Relatorios de agendamentos - Farmácia Municipal'
 };
 
 function subtitleFor(pathname) {
