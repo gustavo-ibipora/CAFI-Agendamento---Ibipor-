@@ -26,6 +26,7 @@ const {
   validarRelatorioAgendamentos
 } = require('../validators/admin');
 const { listarDominios } = require('../services/dominios');
+const { dataHojeISO } = require('../services/datas');
 const { registrarAuditoria, listarAuditoria } = require('../services/auditoria');
 const { DIRETORIO_RECEITAS } = require('../middleware/upload-receita');
 
@@ -851,11 +852,28 @@ router.get('/agendamentos/exportar', exigirLogin, asyncHandler(async (req, res) 
     });
   });
 
-  const dia = new Date();
-  const mes = dia.getMonth() + 1
-  const diaHoje = dia.getDate() + '_'+ mes + '_' + dia.getFullYear()
+  function formatarDataArquivo(dataISO) {
+    const [ano, mes, diaDoMes] = String(dataISO).slice(0, 10).split('-');
+    return `${diaDoMes}_${mes}_${ano}`;
+  }
+
+  let sufixoArquivo;
+  if (data) {
+    sufixoArquivo = formatarDataArquivo(data);
+  } else if (data_inicio && data_fim) {
+    sufixoArquivo = data_inicio === data_fim
+      ? formatarDataArquivo(data_inicio)
+      : `${formatarDataArquivo(data_inicio)}_a_${formatarDataArquivo(data_fim)}`;
+  } else if (data_inicio) {
+    sufixoArquivo = `a_partir_de_${formatarDataArquivo(data_inicio)}`;
+  } else if (data_fim) {
+    sufixoArquivo = `ate_${formatarDataArquivo(data_fim)}`;
+  } else {
+    sufixoArquivo = formatarDataArquivo(dataHojeISO());
+  }
+
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="agenda-${diaHoje}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="agenda-${sufixoArquivo}.xlsx"`);
 
   await workbook.xlsx.write(res);
   res.end();
