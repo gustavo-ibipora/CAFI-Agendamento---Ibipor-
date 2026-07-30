@@ -73,6 +73,30 @@ async function garantirTabelaBloqueios(conn) {
   `);
 }
 
+async function garantirTabelaDiasBloqueados(conn) {
+  await conn.query(`
+    CREATE TABLE IF NOT EXISTS dias_bloqueados (
+      id BIGINT AUTO_INCREMENT PRIMARY KEY,
+      data_agendamento DATE NOT NULL,
+      motivo VARCHAR(255),
+      admin_id INT,
+      updated_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_dia_bloqueado (data_agendamento),
+      INDEX idx_dias_bloqueados_data (data_agendamento)
+    )
+  `);
+}
+
+async function diaBloqueado(pool, data) {
+  await garantirTabelaDiasBloqueados(pool);
+  const [rows] = await pool.query(
+    'SELECT id FROM dias_bloqueados WHERE data_agendamento = ?',
+    [data]
+  );
+  return Boolean(rows[0]);
+}
+
 async function garantirTabelaContadores(conn) {
   await conn.query(`
     CREATE TABLE IF NOT EXISTS contadores_diarios (
@@ -86,6 +110,10 @@ async function garantirTabelaContadores(conn) {
 
 async function horariosDisponiveis(pool, data, primeiroAtendimento, agendamentoIgnoradoId = null) {
   const vagasNecessarias = primeiroAtendimento ? 2 : 1;
+
+  if (await diaBloqueado(pool, data)) {
+    return gerarBlocosDia().map((horario) => ({ horario, vagasRestantes: 0, disponivel: false }));
+  }
 
   await garantirSlotsDia(pool, data);
   let agendamentoIgnorado = null;
@@ -144,6 +172,11 @@ async function criarAgendamento(pool, dados) {
   if (!horarioValido(horario)) {
     const err = new Error('Horario invalido.');
     err.codigo = 'HORARIO_INVALIDO';
+    throw err;
+  }
+  if (await diaBloqueado(pool, data_agendamento)) {
+    const err = new Error('Este dia esta bloqueado para agendamentos.');
+    err.codigo = 'DIA_BLOQUEADO';
     throw err;
   }
 
@@ -349,6 +382,11 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     err.codigo = 'HORARIO_INVALIDO';
     throw err;
   }
+  if (await diaBloqueado(pool, dataNova)) {
+    const err = new Error('Este dia esta bloqueado para agendamentos.');
+    err.codigo = 'DIA_BLOQUEADO';
+    throw err;
+  }
 
   const conn = await pool.getConnection();
   try {
@@ -508,6 +546,18 @@ async function bloquearHorario(pool, data, horario, motivo, adminId) {
   }
 }
 
+async function resumoBloqueiosPorMes(pool, dataInicio, dataFim) {
+  await garantirTabelaBloqueios(pool);
+  const [rows] = await pool.query(
+    `SELECT DATE_FORMAT(data_agendamento, '%Y-%m-%d') AS data, COUNT(*) AS total
+     FROM bloqueios_agenda
+     WHERE data_agendamento BETWEEN ? AND ?
+     GROUP BY data_agendamento`,
+    [dataInicio, dataFim]
+  );
+  return rows;
+}
+
 async function desbloquearHorario(pool, bloqueioId) {
   await garantirTabelaBloqueios(pool);
 
@@ -546,6 +596,92 @@ async function desbloquearHorario(pool, bloqueioId) {
   }
 }
 
+async function listarDiasBloqueados(pool, dataInicio, dataFim) {
+  await garantirTabelaDiasBloqueados(pool);
+
+  const where = [];
+  const parametros = [];
+  if (dataInicio) {
+    where.push('data_agendamento >= ?');
+    parametros.push(dataInicio);
+  }
+  if (dataFim) {
+    where.push('data_agendamento <= ?');
+    parametros.push(dataFim);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT id, DATE_FORMAT(data_agendamento, '%Y-%m-%d') AS data_agendamento, motivo, admin_id, created_at
+     FROM dias_bloqueados
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+     ORDER BY data_agendamento`,
+    parametros
+  );
+  return rows;
+}
+
+async function bloquearDia(pool, data, motivo, adminId) {
+  if (!ehDiaUtil(data)) {
+    const err = new Error('A farmacia so atende de segunda a sexta.');
+    err.codigo = 'DIA_INVALIDO';
+    throw err;
+  }
+
+  await garantirTabelaDiasBloqueados(pool);
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await garantirSlotsDia(conn, data);
+
+    const [ocupadosRows] = await conn.query(
+      `SELECT COUNT(*) AS total
+       FROM agendamentos
+       WHERE data_agendamento = ? AND status IN ('confirmado', 'atendido', 'faltou', 'presente')
+       FOR UPDATE`,
+      [data]
+    );
+    if (ocupadosRows[0].total > 0) {
+      const err = new Error('Nao e possivel bloquear um dia que ja possui agendamentos.');
+      err.codigo = 'DIA_COM_AGENDAMENTOS';
+      throw err;
+    }
+
+    await conn.query(
+      `INSERT INTO dias_bloqueados (data_agendamento, motivo, admin_id, updated_by)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE motivo = VALUES(motivo), admin_id = VALUES(admin_id), updated_by = VALUES(updated_by), created_at = CURRENT_TIMESTAMP`,
+      [data, motivo || null, adminId || null, adminId || null]
+    );
+
+    await conn.commit();
+    return { data };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function desbloquearDia(pool, diaBloqueadoId) {
+  await garantirTabelaDiasBloqueados(pool);
+
+  const [rows] = await pool.query(
+    `SELECT id, DATE_FORMAT(data_agendamento, '%Y-%m-%d') AS data_agendamento
+     FROM dias_bloqueados
+     WHERE id = ?`,
+    [diaBloqueadoId]
+  );
+  const registro = rows[0];
+  if (!registro) {
+    return { encontrado: false };
+  }
+
+  await pool.query('DELETE FROM dias_bloqueados WHERE id = ?', [diaBloqueadoId]);
+  return { encontrado: true, data: registro.data_agendamento };
+}
+
 module.exports = {
   CAPACIDADE_POR_BLOCO,
   LIMITE_ATB_DIA,
@@ -560,5 +696,11 @@ module.exports = {
   atualizarStatusAgendamento,
   reagendarAgendamento,
   bloquearHorario,
-  desbloquearHorario
+  desbloquearHorario,
+  resumoBloqueiosPorMes,
+  garantirTabelaDiasBloqueados,
+  diaBloqueado,
+  listarDiasBloqueados,
+  bloquearDia,
+  desbloquearDia
 };

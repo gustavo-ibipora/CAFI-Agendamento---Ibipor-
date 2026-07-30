@@ -68,6 +68,11 @@ const bloqueioSchema = z.object({
   motivo: z.string().transform(textoSeguro).pipe(z.string().max(255, 'Motivo deve ter no maximo 255 caracteres.')).optional().or(z.literal(''))
 }).strict();
 
+const diaBloqueadoSchema = z.object({
+  data_agendamento: z.string().refine(ehDataISO, 'Data do bloqueio deve estar no formato YYYY-MM-DD.'),
+  motivo: z.string().transform(textoSeguro).pipe(z.string().max(255, 'Motivo deve ter no maximo 255 caracteres.')).optional().or(z.literal(''))
+}).strict();
+
 const buscaPacienteSchema = z.object({
   busca: z.string().transform(textoSeguro).pipe(z.string().min(2, 'Informe pelo menos 2 caracteres para buscar.').max(120, 'Busca deve ter no maximo 120 caracteres.'))
 });
@@ -149,6 +154,10 @@ function validarBloqueio(body) {
   return resposta(bloqueioSchema.safeParse(body));
 }
 
+function validarDiaBloqueado(body) {
+  return resposta(diaBloqueadoSchema.safeParse(body));
+}
+
 function validarBuscaPaciente(query) {
   return resposta(buscaPacienteSchema.safeParse(query));
 }
@@ -194,6 +203,7 @@ module.exports = {
   validarFiltrosAgenda,
   validarReagendamento,
   validarBloqueio,
+  validarDiaBloqueado,
   validarBuscaPaciente,
   validarHorariosAdmin,
   validarLogsAdmin,

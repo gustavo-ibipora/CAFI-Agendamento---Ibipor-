@@ -19,6 +19,7 @@ const {
   validarFiltrosAgenda,
   validarReagendamento,
   validarBloqueio,
+  validarDiaBloqueado,
   validarBuscaPaciente,
   validarHorariosAdmin,
   validarLogsAdmin,
@@ -860,7 +861,18 @@ router.get('/agendamentos/exportar', exigirLogin, asyncHandler(async (req, res) 
   res.end();
 }));
 
-router.get('/bloqueios', exigirLogin, asyncHandler(async (req, res) => {
+router.get('/bloqueios/resumo-mes', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
+  const dataInicio = String(req.query.data_inicio || '');
+  const dataFim = String(req.query.data_fim || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+    throw new AppError(400, 'Parametros "data_inicio" e "data_fim" devem estar no formato YYYY-MM-DD.', 'VALIDACAO_BLOQUEIOS');
+  }
+
+  const resumo = await slots.resumoBloqueiosPorMes(pool, dataInicio, dataFim);
+  res.json({ resumo });
+}));
+
+router.get('/bloqueios', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
   const data = String(req.query.data || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
     throw new AppError(400, 'Parametro "data" deve estar no formato YYYY-MM-DD.', 'VALIDACAO_BLOQUEIOS');
@@ -903,7 +915,7 @@ router.get('/bloqueios', exigirLogin, asyncHandler(async (req, res) => {
   res.json({ bloqueios: rows });
 }));
 
-router.post('/bloqueios', exigirLogin, asyncHandler(async (req, res) => {
+router.post('/bloqueios', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
   const validacao = validarBloqueio(req.body);
   if (!validacao.ok) {
     throw new AppError(400, validacao.mensagem, 'VALIDACAO_BLOQUEIO', validacao.detalhes);
@@ -945,7 +957,7 @@ router.post('/bloqueios', exigirLogin, asyncHandler(async (req, res) => {
   }
 }));
 
-router.delete('/bloqueios/:id', exigirLogin, asyncHandler(async (req, res) => {
+router.delete('/bloqueios/:id', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
   const idValidacao = validarId(req.params);
   if (!idValidacao.ok) {
     throw new AppError(400, idValidacao.mensagem, 'ID_INVALIDO', idValidacao.detalhes);
@@ -969,6 +981,88 @@ router.delete('/bloqueios/:id', exigirLogin, asyncHandler(async (req, res) => {
     detalhes: {
       data: resultado.data,
       horario: resultado.horario
+    },
+    ...dadosAuditoria(req)
+  });
+
+  res.json({ ok: true });
+}));
+
+router.get('/dias-bloqueados', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
+  const dataInicio = req.query.data_inicio ? String(req.query.data_inicio) : null;
+  const dataFim = req.query.data_fim ? String(req.query.data_fim) : null;
+  if (dataInicio && !/^\d{4}-\d{2}-\d{2}$/.test(dataInicio)) {
+    throw new AppError(400, 'Parametro "data_inicio" deve estar no formato YYYY-MM-DD.', 'VALIDACAO_DIAS_BLOQUEADOS');
+  }
+  if (dataFim && !/^\d{4}-\d{2}-\d{2}$/.test(dataFim)) {
+    throw new AppError(400, 'Parametro "data_fim" deve estar no formato YYYY-MM-DD.', 'VALIDACAO_DIAS_BLOQUEADOS');
+  }
+
+  const diasBloqueados = await slots.listarDiasBloqueados(pool, dataInicio, dataFim);
+  res.json({ diasBloqueados });
+}));
+
+router.post('/dias-bloqueados', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
+  const validacao = validarDiaBloqueado(req.body);
+  if (!validacao.ok) {
+    throw new AppError(400, validacao.mensagem, 'VALIDACAO_DIA_BLOQUEADO', validacao.detalhes);
+  }
+
+  try {
+    const resultado = await slots.bloquearDia(
+      pool,
+      validacao.dados.data_agendamento,
+      validacao.dados.motivo,
+      req.session.adminId
+    );
+
+    logger.info('agenda.dia_bloqueado', {
+      adminId: req.session.adminId,
+      data: resultado.data,
+      ...dadosRequisicao(req)
+    });
+    await registrarAuditoria(pool, {
+      evento: 'agenda.dia_bloqueado',
+      entidade: 'dia_bloqueado',
+      entidadeId: resultado.data,
+      detalhes: {
+        data: resultado.data,
+        motivo: validacao.dados.motivo || null
+      },
+      ...dadosAuditoria(req)
+    });
+
+    res.status(201).json({ ok: true, diaBloqueado: resultado });
+  } catch (err) {
+    if (err.codigo) {
+      throw new AppError(409, err.message, err.codigo);
+    }
+    throw err;
+  }
+}));
+
+router.delete('/dias-bloqueados/:id', exigirLogin, exigirAdministrador, asyncHandler(async (req, res) => {
+  const idValidacao = validarId(req.params);
+  if (!idValidacao.ok) {
+    throw new AppError(400, idValidacao.mensagem, 'ID_INVALIDO', idValidacao.detalhes);
+  }
+
+  const resultado = await slots.desbloquearDia(pool, idValidacao.dados.id);
+  if (!resultado.encontrado) {
+    throw new AppError(404, 'Bloqueio de dia nao encontrado.', 'DIA_BLOQUEADO_NAO_ENCONTRADO');
+  }
+
+  logger.info('agenda.dia_desbloqueado', {
+    adminId: req.session.adminId,
+    data: resultado.data,
+    ...dadosRequisicao(req)
+  });
+  await registrarAuditoria(pool, {
+    evento: 'agenda.dia_desbloqueado',
+    entidade: 'dia_bloqueado',
+    entidadeId: resultado.data,
+    detalhes: {
+      data: resultado.data
     },
     ...dadosAuditoria(req)
   });

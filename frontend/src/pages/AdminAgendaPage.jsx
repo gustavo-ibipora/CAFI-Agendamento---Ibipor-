@@ -8,6 +8,7 @@ import useModalScrollLock from '../hooks/useModalScrollLock.js';
 import AdminCreateUserPage from './AdminCreateUserPage.jsx';
 import AdminLogsPage from './AdminLogsPage.jsx';
 import AdminReportsPage from './AdminReportsPage.jsx';
+import AdminHorariosPage from './AdminHorariosPage.jsx';
 import { useNavigate, Link } from 'react-router-dom';
 
 const ROTULOS_STATUS = {
@@ -49,9 +50,6 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   const [opcoesUbs, setOpcoesUbs] = useState([]);
   const [opcoesMedicamento, setOpcoesMedicamento] = useState([]);
   const [agendamentos, setAgendamentos] = useState([]);
-  const [bloqueios, setBloqueios] = useState([]);
-  const [horariosBloqueio, setHorariosBloqueio] = useState([]);
-  const [novoBloqueio, setNovoBloqueio] = useState({ horario: '', motivo: '' });
   const [erro, setErro] = useState('');
   const [resumo, setResumo] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -78,13 +76,6 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   useEffect(() => {
     setAbaAtiva(abaInicial);
   }, [abaInicial]);
-
-  useEffect(() => {
-    if (verificado && data && abaAtiva === 'agenda') {
-      carregarBloqueios(data);
-      carregarHorariosBloqueio(data);
-    }
-  }, [verificado, data, abaAtiva]);
 
   useEffect(() => {
     if (!verificado || abaAtiva !== 'agenda') return undefined;
@@ -174,7 +165,7 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       setNomeAdmin(dados.nome);
       setPodeGerenciarUsuarios(usuarioAdmin);
       setCanManageUsers?.(usuarioAdmin);
-      if (!usuarioAdmin && (abaAtiva === 'usuarios' || abaAtiva === 'logs')) {
+      if (!usuarioAdmin && (abaAtiva === 'usuarios' || abaAtiva === 'logs' || abaAtiva === 'horarios')) {
         setAbaAtiva('agenda');
       }
       setVerificado(true); // libera renderização do conteúdo
@@ -405,7 +396,6 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       }, 'PATCH'));
       setDetalhe((atual) => ({ ...atual, data_agendamento: reagendamento.data, horario: reagendamento.horario }));
       await carregarAgenda(null, { manterPagina: true });
-      await carregarBloqueios(data);
     } catch (err) {
       if (err.status === 401) {
         navigate('/admin/login');
@@ -414,92 +404,6 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       setErro(err.message || 'Erro ao reagendar.');
     } finally {
       setReagendamento((atual) => ({ ...atual, salvando: false }));
-    }
-  }
-
-  async function carregarHorariosBloqueio(dataSelecionada) {
-    try {
-      const params = new URLSearchParams({ data: dataSelecionada, primeiroAtendimento: 'false' });
-      const dados = await apiJson(`/api/admin/horarios-disponiveis?${params.toString()}`);
-      setHorariosBloqueio(dados.blocos || []);
-    } catch (err) {
-      setHorariosBloqueio([]);
-    }
-  }
-
-  async function carregarBloqueios(dataSelecionada) {
-    try {
-      const params = new URLSearchParams({ data: dataSelecionada });
-      const dados = await apiJson(`/api/admin/bloqueios?${params.toString()}`);
-      setBloqueios(dados.bloqueios || []);
-    } catch (err) {
-      setBloqueios([]);
-    }
-  }
-
-  async function bloquearHorario(evento, confirmado = false) {
-    evento?.preventDefault();
-    setErro('');
-    if (!data || !novoBloqueio.horario) {
-      setErro('Escolha um horário para bloquear.');
-      return;
-    }
-
-    if (!confirmado) {
-      confirmarAcao({
-        title: 'Bloquear horário?',
-        message: `O horário ${novoBloqueio.horario} ficará indisponível para novos agendamentos nesta data.`,
-        confirmText: 'Bloquear horário',
-        danger: true,
-        onConfirm: () => bloquearHorario(null, true)
-      });
-      return;
-    }
-
-    fecharConfirmacao();
-    try {
-      await apiJson('/api/admin/bloqueios', jsonOptions({
-        data_agendamento: data,
-        horario: novoBloqueio.horario,
-        motivo: novoBloqueio.motivo
-      }));
-      setNovoBloqueio({ horario: '', motivo: '' });
-      await carregarHorariosBloqueio(data);
-      await carregarBloqueios(data);
-      await carregarAgenda(null, { manterPagina: true });
-    } catch (err) {
-      if (err.status === 401) {
-        navigate('/admin/login');
-        return;
-      }
-      setErro(err.message || 'Erro ao bloquear horário.');
-    }
-  }
-
-  async function desbloquearHorario(id, confirmado = false) {
-    if (!confirmado) {
-      confirmarAcao({
-        title: 'Desbloquear horário?',
-        message: 'Este horário voltará a ficar disponível para novos agendamentos.',
-        confirmText: 'Desbloquear',
-        onConfirm: () => desbloquearHorario(id, true)
-      });
-      return;
-    }
-
-    fecharConfirmacao();
-    setErro('');
-    try {
-      await apiJson(`/api/admin/bloqueios/${id}`, { method: 'DELETE' });
-      await carregarHorariosBloqueio(data);
-      await carregarBloqueios(data);
-      await carregarAgenda(null, { manterPagina: true });
-    } catch (err) {
-      if (err.status === 401) {
-        navigate('/admin/login');
-        return;
-      }
-      setErro(err.message || 'Erro ao desbloquear horário.');
     }
   }
 
@@ -633,6 +537,17 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
           {podeGerenciarUsuarios && (
             <>
           <button
+            id="tab-horarios"
+            type="button"
+            className={abaAtiva === 'horarios' ? 'ativa' : ''}
+            role="tab"
+            aria-selected={abaAtiva === 'horarios'}
+            aria-controls="painel-horarios"
+            onClick={() => setAbaAtiva('horarios')}
+          >
+            Horários
+          </button>
+          <button
             id="tab-usuarios"
             type="button"
             className={abaAtiva === 'usuarios' ? 'ativa' : ''}
@@ -662,6 +577,10 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       {abaAtiva === 'usuarios' && podeGerenciarUsuarios ? (
         <section id="painel-usuarios" role="tabpanel" aria-labelledby="tab-usuarios">
           <AdminCreateUserPage embedded />
+        </section>
+      ) : abaAtiva === 'horarios' && podeGerenciarUsuarios ? (
+        <section id="painel-horarios" role="tabpanel" aria-labelledby="tab-horarios">
+          <AdminHorariosPage />
         </section>
       ) : abaAtiva === 'logs' && podeGerenciarUsuarios ? (
         <section id="painel-logs" role="tabpanel" aria-labelledby="tab-logs">
@@ -724,34 +643,6 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
 
         <div className="resumo-agenda">{resumo}</div>
         <Message>{erro}</Message>
-
-        <div className="painel-admin-grid painel-admin-grid-unico">
-          <section className="painel-admin-bloco">
-            <h3>Bloqueio manual de horários</h3>
-            <form className="bloqueio-form" onSubmit={bloquearHorario}>
-              <select value={novoBloqueio.horario} onChange={(e) => setNovoBloqueio((atual) => ({ ...atual, horario: e.target.value }))}>
-                <option value="">Horário</option>
-                {horariosBloqueio.map((bloco) => (
-                  <option key={bloco.horario} value={bloco.horario} disabled={!bloco.disponivel}>
-                    {bloco.horario}{!bloco.disponivel ? ' indisponível' : ''}
-                  </option>
-                ))}
-              </select>
-              <input value={novoBloqueio.motivo} placeholder="Motivo" maxLength="255" onChange={(e) => setNovoBloqueio((atual) => ({ ...atual, motivo: e.target.value }))} />
-              <button type="submit">Bloquear</button>
-            </form>
-            <div className="lista-bloqueios">
-              {bloqueios.length === 0 ? (
-                <span>Nenhum bloqueio nesta data.</span>
-              ) : bloqueios.map((bloqueio) => (
-                <div key={bloqueio.id} className="bloqueio-item">
-                  <span><strong>{bloqueio.horario}</strong> {bloqueio.motivo || 'Sem motivo informado'}</span>
-                  <button type="button" className="botao-tabela botao-faltou" onClick={() => desbloquearHorario(bloqueio.id)}>Desbloquear</button>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
 
         <div className="tabela-responsiva agenda-scroll">
           <table className="tabela-agenda">
