@@ -970,6 +970,186 @@ input.campo-valido {
 }
 
 /* =============================================
+   PAINEL DE HORÁRIOS (calendário admin)
+   ============================================= */
+.painel-horarios-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(360px, 1.1fr);
+  gap: 16px;
+  margin: 16px 0 20px;
+  align-items: start;
+}
+
+.painel-horarios-subsecao {
+  margin-bottom: 20px;
+}
+
+.painel-horarios-subsecao:last-child {
+  margin-bottom: 0;
+}
+
+.painel-horarios-subsecao h4 {
+  margin: 0 0 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--cinza-suave);
+  text-transform: uppercase;
+}
+
+.calendario-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.calendario-cabecalho strong {
+  font-size: 1rem;
+  color: var(--azul-escuro);
+  text-transform: capitalize;
+}
+
+.calendario-cabecalho button {
+  min-height: auto;
+  padding: 4px 12px;
+  line-height: 1;
+}
+
+.calendario-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 0.78rem;
+  color: var(--cinza-suave);
+}
+
+.calendario-legenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legenda-cor {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legenda-disponivel { background: var(--verde-claro); border: 1px solid var(--verde); }
+.legenda-parcial { background: var(--amarelo-claro); border: 1px solid var(--amarelo); }
+.legenda-bloqueado { background: #fdecea; border: 1px solid var(--vermelho); }
+.legenda-indisponivel { background: var(--fundo-claro); border: 1px solid var(--borda-forte); }
+
+.calendario-grade {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.calendario-dia-semana {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--cinza-suave);
+  padding: 4px 0;
+}
+
+.calendario-celula {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--borda-card);
+  border-radius: var(--raio-sm);
+  background: var(--superficie);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--cinza-texto);
+  cursor: pointer;
+  padding: 0;
+}
+
+.calendario-celula-vazia {
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+
+.calendario-celula-disponivel {
+  background: var(--verde-claro);
+  border-color: var(--verde);
+  color: var(--verde);
+}
+
+.calendario-celula-parcial {
+  background: var(--amarelo-claro);
+  border-color: var(--amarelo);
+  color: var(--amarelo);
+}
+
+.calendario-celula-bloqueado {
+  background: #fdecea;
+  border-color: var(--vermelho);
+  color: var(--vermelho);
+}
+
+.calendario-celula-indisponivel,
+.calendario-celula-passado {
+  background: var(--fundo-claro);
+  border-color: var(--borda);
+  color: var(--cinza-medio);
+}
+
+.calendario-celula-hoje {
+  box-shadow: inset 0 0 0 2px var(--azul);
+}
+
+.calendario-celula-selecionada {
+  outline: 2px solid var(--azul-escuro);
+  outline-offset: 1px;
+}
+
+.grade-horarios-dia {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chip-horario {
+  padding: 4px 9px;
+  border-radius: var(--raio-pill);
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.chip-horario-disponivel {
+  background: var(--verde-claro);
+  color: var(--verde);
+  border-color: var(--verde);
+}
+
+.chip-horario-bloqueado {
+  background: #fdecea;
+  color: var(--vermelho);
+  border-color: var(--vermelho);
+}
+
+.chip-horario-ocupado {
+  background: var(--fundo-claro);
+  color: var(--cinza-medio);
+  border-color: var(--borda);
+}
+
+@media (max-width: 860px) {
+  .painel-horarios-grid { grid-template-columns: 1fr; }
+}
+
+/* =============================================
    MODAL
    ============================================= */
 .modal-fundo {

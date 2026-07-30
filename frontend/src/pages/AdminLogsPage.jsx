@@ -14,7 +14,9 @@ const ROTULOS_EVENTOS = {
   'agendamento.status_atualizado': 'Status alterado',
   'agendamento.reagendado': 'Reagendamento',
   'agenda.horario_bloqueado': 'Horário bloqueado',
-  'agenda.horario_desbloqueado': 'Horário desbloqueado'
+  'agenda.horario_desbloqueado': 'Horário desbloqueado',
+  'agenda.dia_bloqueado': 'Dia bloqueado',
+  'agenda.dia_desbloqueado': 'Dia desbloqueado'
 };
 
 const ITENS_POR_PAGINA = 10;
