@@ -19,6 +19,7 @@
     "migrate:audit": "node scripts/migrar-auditoria-operacao.js",
     "migrate:receita": "node scripts/migrar-receita-agendamento.js",
     "migrate:day-blocks": "node scripts/migrar-dias-bloqueados.js",
+    "migrate:encaixe": "node scripts/migrar-encaixe-agendamento.js",
     "seed:full-day": "node scripts/seed-agenda-cheia-20260703.js",
     "fix:recalcular-slots": "node scripts/recalcular-slots-agenda.js",
     "test": "node --test test"
