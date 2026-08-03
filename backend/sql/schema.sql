@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS agendamentos (
   data_agendamento DATE NOT NULL,
   horario TIME NOT NULL,
   vagas_ocupadas TINYINT NOT NULL DEFAULT 1,
+  encaixe TINYINT(1) NOT NULL DEFAULT 0,
   status ENUM('confirmado','cancelado','atendido','faltou','presente') NOT NULL DEFAULT 'confirmado',
   presente_por INT NULL,
   presente_em DATETIME NULL,

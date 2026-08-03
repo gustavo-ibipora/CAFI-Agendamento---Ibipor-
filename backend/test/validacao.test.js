@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validarCPF, validarAgendamentoEntrada, validarHorariosDisponiveis } = require('../validators/agendamentos');
-const { validarLogin, validarCriacaoUsuario, validarAtualizacaoUsuario, validarId, validarHorariosAdmin, validarRelatorioAgendamentos } = require('../validators/admin');
+const { validarLogin, validarCriacaoUsuario, validarAtualizacaoUsuario, validarId, validarHorariosAdmin, validarRelatorioAgendamentos, validarNovoAgendamentoAdmin } = require('../validators/admin');
+const { dataHojeISO, adicionarDiasISO } = require('../services/datas');
+const slots = require('../services/slots');
 
 const dominios = {
   ubs: ['UBS San Rafael'],
@@ -150,6 +152,40 @@ test('valida identificadores e parametros administrativos de horarios', () => {
   });
   assert.equal(horarios.ok, true);
   assert.equal(horarios.dados.agendamentoId, 10);
+});
+
+test('encaixe permite agendar para hoje; sem encaixe exige a partir de amanha', () => {
+  const hoje = dataHojeISO();
+  const base = {
+    nome_completo: 'Teste Encaixe',
+    cpf: '529.982.247-25',
+    data_nascimento: '1990-01-01',
+    endereco: 'Rua Teste, 123',
+    telefone: '43999999999',
+    email: 'teste@example.com',
+    ubs: 'UBS San Rafael',
+    tipo_medicamento: 'Antibiotico',
+    primeiro_atendimento: false,
+    previsao_termino: adicionarDiasISO(hoje, 30),
+    observacoes: '',
+    data_agendamento: hoje,
+    horario: '08:00'
+  };
+
+  // Sem encaixe, "hoje" deve ser sempre rejeitado (seja pela regra de dia seguinte, seja por nao ser dia util).
+  const semEncaixe = validarNovoAgendamentoAdmin({ ...base, encaixe: false }, dominios);
+  assert.equal(semEncaixe.ok, false);
+
+  if (slots.ehDiaUtil(hoje)) {
+    const comEncaixe = validarNovoAgendamentoAdmin({ ...base, encaixe: true }, dominios);
+    assert.equal(comEncaixe.ok, true);
+    assert.equal(comEncaixe.dados.data_agendamento, hoje);
+
+    const ontem = adicionarDiasISO(hoje, -1);
+    const encaixeNoPassado = validarNovoAgendamentoAdmin({ ...base, data_agendamento: ontem, encaixe: true }, dominios);
+    assert.equal(encaixeNoPassado.ok, false);
+    assert.match(encaixeNoPassado.mensagem, /nao pode ser no passado/);
+  }
 });
 
 test('valida filtros de relatorio de agendamentos', () => {

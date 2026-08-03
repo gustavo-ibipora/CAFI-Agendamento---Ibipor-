@@ -38,7 +38,7 @@ const textoObrigatorio = (rotulo, max) => z.string()
 const dataObrigatoria = (rotulo) => z.string()
   .refine(ehDataISO, `${rotulo} deve estar no formato YYYY-MM-DD.`);
 
-const agendamentoSchema = z.object({
+const agendamentoCamposSchema = z.object({
   nome_completo: textoObrigatorio('Nome completo', 150),
   cpf: z.string().transform((valor) => valor.replace(/\D/g, '')).refine(validarCPF, 'CPF invalido.'),
   data_nascimento: dataObrigatoria('Data de nascimento'),
@@ -57,7 +57,9 @@ const agendamentoSchema = z.object({
   observacoes: z.string().transform(textoSeguro).pipe(z.string().max(2000, 'Observacoes devem ter no maximo 2000 caracteres.')).optional().or(z.literal('')),
   data_agendamento: dataObrigatoria('Data do agendamento'),
   horario: z.string().regex(/^\d{2}:\d{2}$/, 'Horario deve estar no formato HH:mm.')
-}).strict().superRefine((dados, ctx) => {
+});
+
+function aplicarRegrasNegocioAgendamento(dados, ctx) {
   const hoje = dataHojeISO();
   const amanha = dataAmanhaISO();
 
@@ -69,8 +71,15 @@ const agendamentoSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['previsao_termino'], message: 'Previsao de termino nao pode ser no passado.' });
   }
 
-  if (compararDatasISO(dados.data_agendamento, amanha) < 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['data_agendamento'], message: 'A data do agendamento deve ser a partir do dia seguinte.' });
+  const dataMinimaAgendamento = dados.encaixe ? hoje : amanha;
+  if (compararDatasISO(dados.data_agendamento, dataMinimaAgendamento) < 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['data_agendamento'],
+      message: dados.encaixe
+        ? 'A data do agendamento nao pode ser no passado.'
+        : 'A data do agendamento deve ser a partir do dia seguinte.'
+    });
   }
 
   if (!ehDiaUtil(dados.data_agendamento)) {
@@ -80,7 +89,9 @@ const agendamentoSchema = z.object({
   if (!slots.horarioValido(dados.horario)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['horario'], message: 'Horario invalido.' });
   }
-});
+}
+
+const agendamentoSchema = agendamentoCamposSchema.strict().superRefine(aplicarRegrasNegocioAgendamento);
 
 const horariosDisponiveisSchema = z.object({
   data: dataObrigatoria('Data'),
@@ -123,5 +134,7 @@ function validarHorariosDisponiveis(query) {
 module.exports = {
   validarAgendamentoEntrada,
   validarHorariosDisponiveis,
-  validarCPF
+  validarCPF,
+  agendamentoCamposSchema,
+  aplicarRegrasNegocioAgendamento
 };

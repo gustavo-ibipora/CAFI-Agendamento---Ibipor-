@@ -1,5 +1,6 @@
 const { z } = require('zod');
 const { ehDataISO } = require('../services/datas');
+const { agendamentoCamposSchema, aplicarRegrasNegocioAgendamento } = require('./agendamentos');
 
 function mensagemZod(error) {
   return error.issues.map((issue) => issue.message).join(' ');
@@ -61,6 +62,13 @@ const reagendamentoSchema = z.object({
   data_agendamento: z.string().refine(ehDataISO, 'Data do agendamento deve estar no formato YYYY-MM-DD.'),
   horario: z.string().regex(/^\d{2}:\d{2}$/, 'Horario deve estar no formato HH:mm.')
 }).strict();
+
+const novoAgendamentoAdminSchema = agendamentoCamposSchema
+  .extend({
+    encaixe: z.preprocess((valor) => (valor === undefined ? false : valor), z.boolean({ message: 'Campo "encaixe" invalido.' })).default(false)
+  })
+  .strict()
+  .superRefine(aplicarRegrasNegocioAgendamento);
 
 const bloqueioSchema = z.object({
   data_agendamento: z.string().refine(ehDataISO, 'Data do bloqueio deve estar no formato YYYY-MM-DD.'),
@@ -150,6 +158,24 @@ function validarReagendamento(body) {
   return resposta(reagendamentoSchema.safeParse(body));
 }
 
+function validarNovoAgendamentoAdmin(body, dominios) {
+  const resultado = novoAgendamentoAdminSchema.safeParse(body);
+  if (!resultado.success) {
+    return { ok: false, mensagem: mensagemZod(resultado.error), detalhes: resultado.error.issues.map((issue) => issue.message) };
+  }
+  const detalhes = [];
+  if (dominios && !dominios.ubs.includes(resultado.data.ubs)) {
+    detalhes.push('Unidade Basica de Saude invalida.');
+  }
+  if (dominios && !dominios.tiposMedicamento.includes(resultado.data.tipo_medicamento)) {
+    detalhes.push('Tipo de medicamento invalido.');
+  }
+  if (detalhes.length > 0) {
+    return { ok: false, mensagem: detalhes.join(' '), detalhes };
+  }
+  return { ok: true, dados: resultado.data };
+}
+
 function validarBloqueio(body) {
   return resposta(bloqueioSchema.safeParse(body));
 }
@@ -202,6 +228,7 @@ module.exports = {
   validarStatus,
   validarFiltrosAgenda,
   validarReagendamento,
+  validarNovoAgendamentoAdmin,
   validarBloqueio,
   validarDiaBloqueado,
   validarBuscaPaciente,

@@ -4,6 +4,7 @@ import { dataBrasil, dataHoraBrasil, formatarCpf, hojeISO, aplicarMascaraData, d
 import Message from '../components/Message.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import CampoDataInput from '../components/CampoDataInput.jsx';
+import NovoAgendamentoModal from '../components/NovoAgendamentoModal.jsx';
 import useModalScrollLock from '../hooks/useModalScrollLock.js';
 import AdminCreateUserPage from './AdminCreateUserPage.jsx';
 import AdminLogsPage from './AdminLogsPage.jsx';
@@ -35,6 +36,7 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   const detalheModalRef = useRef(null);
   const detalheFecharRef = useRef(null);
   const detalheBotaoAnteriorRef = useRef(null);
+  const mensagemInclusaoTimeoutRef = useRef(null);
   const navigate = useNavigate();
   const dataPickerRef = useRef(null);
   const [nomeAdmin, setNomeAdmin] = useState('');
@@ -61,6 +63,8 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   const [confirmacao, setConfirmacao] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [idsAtualizados, setIdsAtualizados] = useState(() => new Set());
+  const [novoAgendamentoAberto, setNovoAgendamentoAberto] = useState(false);
+  const [mensagemInclusao, setMensagemInclusao] = useState('');
 
   // Refs sincronizadas a cada render para leitura sem "stale closures" dentro do polling em segundo plano.
   filtrosRef.current = { data, ubs, medicamento, status: statusFiltro, busca: buscaAgenda };
@@ -120,6 +124,7 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   useEffect(() => {
     return () => {
       if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
+      if (mensagemInclusaoTimeoutRef.current) clearTimeout(mensagemInclusaoTimeoutRef.current);
     };
   }, []);
 
@@ -407,6 +412,37 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     }
   }
 
+  function abrirNovoAgendamento() {
+    setNovoAgendamentoAberto(true);
+  }
+
+  function fecharNovoAgendamento() {
+    setNovoAgendamentoAberto(false);
+  }
+
+  async function agendamentoCriado(resultado) {
+    setNovoAgendamentoAberto(false);
+    const agendamento = resultado.agendamento;
+
+    if (agendamento.data_agendamento !== data) {
+      setData(agendamento.data_agendamento);
+      setDataTexto(dataIsoParaBr(agendamento.data_agendamento));
+    }
+    await carregarAgenda(null, { data: agendamento.data_agendamento, manterPagina: false });
+
+    setIdsAtualizados(new Set([agendamento.id]));
+    if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
+    destaqueTimeoutRef.current = setTimeout(() => setIdsAtualizados(new Set()), DURACAO_DESTAQUE_MS);
+
+    setMensagemInclusao(
+      resultado.encaixe
+        ? `${agendamento.nome_completo} foi incluído(a) com sucesso como encaixe, mesmo com a agenda cheia.`
+        : `${agendamento.nome_completo} foi incluído(a) com sucesso na agenda.`
+    );
+    if (mensagemInclusaoTimeoutRef.current) clearTimeout(mensagemInclusaoTimeoutRef.current);
+    mensagemInclusaoTimeoutRef.current = setTimeout(() => setMensagemInclusao(''), 6000);
+  }
+
   function abrirDetalhe(agendamento) {
     detalheBotaoAnteriorRef.current = document.activeElement;
     setDetalhe(agendamento);
@@ -639,9 +675,13 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
           <div className="campo">
             <button type="button" className="secundario" style={{ borderColor: '#217346', color: '#217346' }} onClick={exportarXLS}>Exportar Planilha</button>
           </div>
+          <div className="campo">
+            <button type="button" onClick={abrirNovoAgendamento}>Novo agendamento</button>
+          </div>
         </form>
 
         <div className="resumo-agenda">{resumo}</div>
+        <Message type="sucesso">{mensagemInclusao}</Message>
         <Message>{erro}</Message>
 
         <div className="tabela-responsiva agenda-scroll">
@@ -681,7 +721,10 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
                     <strong>{ag.tipo_medicamento}</strong>
                     <span>{ag.primeiro_atendimento ? 'Primeiro atendimento' : 'Retorno'}</span>
                   </td>
-                  <td data-label="Status"><span className={`tag tag-${ag.status}`}>{ROTULOS_STATUS[ag.status] || ag.status}</span></td>
+                  <td data-label="Status">
+                    <span className={`tag tag-${ag.status}`}>{ROTULOS_STATUS[ag.status] || ag.status}</span>
+                    {Boolean(ag.encaixe) && <span className="tag tag-encaixe" title="Incluído mesmo com a agenda cheia">Encaixe</span>}
+                  </td>
                   <td className="acoes-tabela" data-label="Ações">
                     <button type="button" className="botao-tabela botao-detalhes" onClick={() => abrirDetalhe(ag)}>
                       Detalhes
@@ -736,7 +779,11 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
               <dl className="detalhes-lista">
                 <dt>Data</dt><dd>{dataBrasil(detalhe.data_agendamento)}</dd>
                 <dt>Horário</dt><dd>{String(detalhe.horario || '').slice(0, 5)}</dd>
-                <dt>Status</dt><dd><span className={`tag tag-${detalhe.status}`}>{ROTULOS_STATUS[detalhe.status] || detalhe.status}</span></dd>
+                <dt>Status</dt>
+                <dd>
+                  <span className={`tag tag-${detalhe.status}`}>{ROTULOS_STATUS[detalhe.status] || detalhe.status}</span>
+                  {Boolean(detalhe.encaixe) && <span className="tag tag-encaixe" title="Incluído mesmo com a agenda cheia">Encaixe</span>}
+                </dd>
                 {detalhe.presente_em && (
                   <>
                     <dt>Recepcionado por</dt><dd>{detalhe.presente_por_nome || 'Desconhecido'}</dd>
@@ -846,6 +893,14 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
         </section>
       )}
       <ConfirmDialog open={Boolean(confirmacao)} onCancel={fecharConfirmacao} {...confirmacao} />
+      <NovoAgendamentoModal
+        open={novoAgendamentoAberto}
+        dataInicial={data}
+        opcoesUbs={opcoesUbs}
+        opcoesMedicamento={opcoesMedicamento}
+        onClose={fecharNovoAgendamento}
+        onCriado={agendamentoCriado}
+      />
     </main>
   );
 }

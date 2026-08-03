@@ -129,6 +129,71 @@
   color: var(--verde);
 }
 
+.tag-encaixe {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 3px 10px;
+  border-radius: var(--raio-pill);
+  font-size: 0.75rem;
+  font-weight: 800;
+  margin-left: 6px;
+  background: #f3e8ff;
+  color: #7e22ce;
+  border: 1px solid #e9d5ff;
+}
+
+.campo-encaixe {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e9d5ff;
+  border-radius: var(--raio);
+  background: #faf5ff;
+}
+
+.campo-encaixe .campo-ajuda {
+  margin: 6px 0 0;
+}
+
+.campo-encaixe .toggle-linha input[type="checkbox"] {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  max-width: 20px;
+  padding: 0;
+  box-sizing: border-box;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 20px;
+  margin: 0;
+  border: 2px solid var(--borda-forte);
+  border-radius: 50%;
+  background: var(--superficie);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.campo-encaixe .toggle-linha input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #7e22ce;
+  transform: scale(0);
+  transition: transform var(--transicao);
+}
+
+.campo-encaixe .toggle-linha input[type="checkbox"]:checked {
+  border-color: #7e22ce;
+  background: var(--branco);
+}
+
+.campo-encaixe .toggle-linha input[type="checkbox"]:checked::after {
+  transform: scale(1);
+}
+
 
 /* =============================================
    HOME — HERO / DESTAQUE

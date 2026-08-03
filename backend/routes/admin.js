@@ -18,6 +18,7 @@ const {
   validarStatus,
   validarFiltrosAgenda,
   validarReagendamento,
+  validarNovoAgendamentoAdmin,
   validarBloqueio,
   validarDiaBloqueado,
   validarBuscaPaciente,
@@ -28,6 +29,7 @@ const {
 const { listarDominios } = require('../services/dominios');
 const { dataHojeISO } = require('../services/datas');
 const { registrarAuditoria, listarAuditoria } = require('../services/auditoria');
+const { enfileirarConfirmacao } = require('../services/email-queue');
 const { DIRETORIO_RECEITAS } = require('../middleware/upload-receita');
 
 const router = express.Router();
@@ -444,7 +446,7 @@ router.get('/agendamentos', exigirLogin, asyncHandler(async (req, res) => {
             a.receita_arquivo,
             DATE_FORMAT(a.data_agendamento, '%Y-%m-%d') AS data_agendamento,
             TIME_FORMAT(a.horario, '%H:%i') AS horario,
-            a.vagas_ocupadas, a.status,
+            a.vagas_ocupadas, a.encaixe, a.status,
       DATE_FORMAT(a.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
       a.updated_by,
       DATE_FORMAT(a.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
@@ -462,6 +464,59 @@ router.get('/agendamentos', exigirLogin, asyncHandler(async (req, res) => {
   );
 
   res.json({ agendamentos: rows });
+}));
+
+router.post('/agendamentos', exigirLogin, asyncHandler(async (req, res) => {
+  const dominios = await listarDominios(pool);
+  const validacao = validarNovoAgendamentoAdmin(req.body, dominios);
+  if (!validacao.ok) {
+    throw new AppError(400, validacao.mensagem, 'VALIDACAO_AGENDAMENTO', validacao.detalhes);
+  }
+  const { encaixe, ...dadosAgendamento } = validacao.dados;
+
+  try {
+    const id = await slots.criarAgendamento(pool, dadosAgendamento, { encaixe, adminId: req.session.adminId });
+    const [rows] = await pool.query(
+      `SELECT id, nome_completo, cpf, email, ubs, tipo_medicamento, primeiro_atendimento,
+              DATE_FORMAT(data_agendamento, '%Y-%m-%d') AS data_agendamento,
+              TIME_FORMAT(horario, '%H:%i') AS horario,
+              observacoes, encaixe
+       FROM agendamentos
+       WHERE id = ?`,
+      [id]
+    );
+    const agendamento = rows[0];
+    const resultadoEmail = await enfileirarConfirmacao(pool, agendamento);
+
+    logger.info('admin.agendamento_criado', {
+      adminId: req.session.adminId,
+      agendamentoId: agendamento.id,
+      data: agendamento.data_agendamento,
+      horario: agendamento.horario,
+      encaixe: Boolean(encaixe),
+      ...dadosRequisicao(req)
+    });
+    await registrarAuditoria(pool, {
+      evento: 'admin.agendamento_criado',
+      entidade: 'agendamento',
+      entidadeId: agendamento.id,
+      detalhes: {
+        nomeCompleto: agendamento.nome_completo,
+        cpf: agendamento.cpf,
+        data: agendamento.data_agendamento,
+        horario: agendamento.horario,
+        encaixe: Boolean(encaixe)
+      },
+      ...dadosAuditoria(req)
+    });
+
+    res.status(201).json({ ok: true, agendamento, encaixe: Boolean(encaixe), email: resultadoEmail });
+  } catch (err) {
+    if (err.codigo) {
+      throw new AppError(409, err.message, err.codigo);
+    }
+    throw err;
+  }
 }));
 
 router.get('/agendamentos/:id/receita', exigirLogin, asyncHandler(async (req, res, next) => {
@@ -800,7 +855,7 @@ router.get('/agendamentos/exportar', exigirLogin, asyncHandler(async (req, res) 
             a.observacoes,
             DATE_FORMAT(a.data_agendamento, '%d/%m/%Y') AS data_agendamento,
             TIME_FORMAT(a.horario, '%H:%i') AS horario,
-            a.vagas_ocupadas, a.status,
+            a.vagas_ocupadas, a.encaixe, a.status,
             DATE_FORMAT(a.atendido_em, '%d/%m/%Y %H:%i:%s') AS atendido_em,
             DATE_FORMAT(a.presente_em, '%d/%m/%Y %H:%i:%s') AS presente_em,
             u.nome AS atendido_por_nome,
@@ -825,6 +880,7 @@ router.get('/agendamentos/exportar', exigirLogin, asyncHandler(async (req, res) 
     { header: 'UBS Origem', key: 'ubs', width: 30 },
     { header: 'Medicamento', key: 'tipo_medicamento', width: 25 },
     { header: '1º Atendimento', key: 'primeiro_atendimento', width: 15 },
+    { header: 'Encaixe', key: 'encaixe', width: 12 },
     { header: 'Chegada Em', key: 'presente_em', width: 20 },
     { header: 'Status', key: 'status', width: 15 },
     { header: 'Atendido Por', key: 'atendido_por_nome', width: 25 },
@@ -844,6 +900,7 @@ router.get('/agendamentos/exportar', exigirLogin, asyncHandler(async (req, res) 
       ubs: row.ubs,
       tipo_medicamento: row.tipo_medicamento,
       primeiro_atendimento: row.primeiro_atendimento ? 'Sim' : 'Não',
+      encaixe: row.encaixe ? 'Sim' : 'Não',
       presente_em: row.presente_em || '',
       status: row.status,
       atendido_por_nome: row.atendido_por_nome || '',
