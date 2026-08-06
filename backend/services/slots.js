@@ -158,7 +158,8 @@ async function horariosDisponiveis(pool, data, primeiroAtendimento, agendamentoI
     });
 }
 
-async function criarAgendamento(pool, dados) {
+async function criarAgendamento(pool, dados, opcoes = {}) {
+  const { encaixe = false, adminId = null } = opcoes;
   const {
     data_agendamento,
     horario,
@@ -202,13 +203,26 @@ async function criarAgendamento(pool, dados) {
       throw err;
     }
 
-    const [slotResult] = await conn.query(
-      `UPDATE slots_agenda
-       SET ocupadas = ocupadas + ?
-       WHERE data_agendamento = ? AND horario = ? AND ocupadas + ? <= capacidade`,
-      [vagasNecessarias, data_agendamento, horario, vagasNecessarias]
-    );
+    const [slotResult] = encaixe
+      ? await conn.query(
+          `UPDATE slots_agenda
+           SET capacidade = GREATEST(capacidade, ocupadas + ?),
+               ocupadas = ocupadas + ?
+           WHERE data_agendamento = ? AND horario = ? AND capacidade > 0`,
+          [vagasNecessarias, vagasNecessarias, data_agendamento, horario]
+        )
+      : await conn.query(
+          `UPDATE slots_agenda
+           SET ocupadas = ocupadas + ?
+           WHERE data_agendamento = ? AND horario = ? AND ocupadas + ? <= capacidade`,
+          [vagasNecessarias, data_agendamento, horario, vagasNecessarias]
+        );
     if (slotResult.affectedRows === 0) {
+      if (encaixe) {
+        const err = new Error('Este horario esta bloqueado e nao permite encaixe.');
+        err.codigo = 'HORARIO_BLOQUEADO';
+        throw err;
+      }
       const err = new Error('Este horario acabou de lotar. Escolha outro.');
       err.codigo = 'HORARIO_LOTADO';
       throw err;
@@ -219,12 +233,19 @@ async function criarAgendamento(pool, dados) {
         `INSERT IGNORE INTO contadores_diarios (data, tipo, valor) VALUES (?, 'Antibiotico', 0)`,
         [data_agendamento]
       );
-      const [atbResult] = await conn.query(
-        `UPDATE contadores_diarios
-         SET valor = valor + 1
-         WHERE data = ? AND tipo = 'Antibiotico' AND valor < ?`,
-        [data_agendamento, LIMITE_ATB_DIA]
-      );
+      const [atbResult] = encaixe
+        ? await conn.query(
+            `UPDATE contadores_diarios
+             SET valor = valor + 1
+             WHERE data = ? AND tipo = 'Antibiotico'`,
+            [data_agendamento]
+          )
+        : await conn.query(
+            `UPDATE contadores_diarios
+             SET valor = valor + 1
+             WHERE data = ? AND tipo = 'Antibiotico' AND valor < ?`,
+            [data_agendamento, LIMITE_ATB_DIA]
+          );
       if (atbResult.affectedRows === 0) {
         const err = new Error('O limite diario de retiradas de Antibiotico ja foi atingido. Escolha outro dia.');
         err.codigo = 'LIMITE_ATB';
@@ -236,8 +257,8 @@ async function criarAgendamento(pool, dados) {
       `INSERT INTO agendamentos
         (nome_completo, cpf, data_nascimento, endereco, telefone, email, ubs,
          tipo_medicamento, primeiro_atendimento, previsao_termino, observacoes,
-         data_agendamento, horario, vagas_ocupadas, status, receita_arquivo)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmado', ?)`,
+         data_agendamento, horario, vagas_ocupadas, encaixe, status, receita_arquivo, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmado', ?, ?)`,
       [
         dados.nome_completo,
         dados.cpf,
@@ -253,7 +274,9 @@ async function criarAgendamento(pool, dados) {
         data_agendamento,
         horario,
         vagasNecessarias,
-        dados.receita_arquivo || null
+        encaixe ? 1 : 0,
+        dados.receita_arquivo || null,
+        adminId
       ]
     );
 

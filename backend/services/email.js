@@ -56,10 +56,10 @@ function criarMensagemConfirmacao(agendamento) {
   return {
     from: env.smtp.from,
     to: agendamento.email,
-    subject: 'Confirmacao de agendamento - CAFI',
+    subject: 'Confirmacao de agendamento - Farmácia Municipal',
     text:
       `Ola, ${agendamento.nome_completo}!\n\n` +
-      `Seu agendamento no CAFI foi confirmado:\n\n` +
+      `Seu agendamento na Farmácia Municipal foi confirmado:\n\n` +
       `Data: ${dataFormatada}\n` +
       `Horario: ${agendamento.horario}\n` +
       `UBS de origem: ${agendamento.ubs}\n` +
