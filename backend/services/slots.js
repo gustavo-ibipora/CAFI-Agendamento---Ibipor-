@@ -5,7 +5,6 @@ const CAPACIDADE_POR_BLOCO = 8;
 const LIMITE_ATB_DIA = 10;
 const INICIO = '08:00';
 const FIM = '16:15';
-const PAUSAS = new Set(['09:45', '13:00', '15:00']);
 const STATUS_OCUPA_VAGA = new Set(['confirmado', 'atendido', 'faltou', 'presente']);
 let blocosDiaCache = null;
 
@@ -25,8 +24,7 @@ function gerarBlocosDia() {
 
   const blocos = [];
   for (let m = paraMinutos(INICIO); m <= paraMinutos(FIM); m += 15) {
-    const hhmm = paraHHMM(m);
-    if (!PAUSAS.has(hhmm)) blocos.push(hhmm);
+    blocos.push(paraHHMM(m));
   }
   blocosDiaCache = blocos;
   return blocosDiaCache;
@@ -136,24 +134,28 @@ async function horariosDisponiveis(pool, data, primeiroAtendimento, agendamentoI
     [data]
   );
 
-  return rows.map((row) => {
-    const horario = row.horario.slice(0, 5);
-    let ocupadas = row.ocupadas;
-    if (
-      agendamentoIgnorado &&
-      STATUS_OCUPA_VAGA.has(agendamentoIgnorado.status) &&
-      dataBancoParaISO(agendamentoIgnorado.data_agendamento) === data &&
-      agendamentoIgnorado.horario.slice(0, 5) === horario
-    ) {
-      ocupadas = Math.max(ocupadas - agendamentoIgnorado.vagas_ocupadas, 0);
-    }
-    const vagasRestantes = row.capacidade - ocupadas;
-    return {
-      horario,
-      vagasRestantes,
-      disponivel: vagasRestantes >= vagasNecessarias
-    };
-  });
+  const blocosValidos = new Set(gerarBlocosDia());
+
+  return rows
+    .filter((row) => blocosValidos.has(row.horario.slice(0, 5)))
+    .map((row) => {
+      const horario = row.horario.slice(0, 5);
+      let ocupadas = row.ocupadas;
+      if (
+        agendamentoIgnorado &&
+        STATUS_OCUPA_VAGA.has(agendamentoIgnorado.status) &&
+        dataBancoParaISO(agendamentoIgnorado.data_agendamento) === data &&
+        agendamentoIgnorado.horario.slice(0, 5) === horario
+      ) {
+        ocupadas = Math.max(ocupadas - agendamentoIgnorado.vagas_ocupadas, 0);
+      }
+      const vagasRestantes = row.capacidade - ocupadas;
+      return {
+        horario,
+        vagasRestantes,
+        disponivel: vagasRestantes >= vagasNecessarias
+      };
+    });
 }
 
 async function criarAgendamento(pool, dados) {

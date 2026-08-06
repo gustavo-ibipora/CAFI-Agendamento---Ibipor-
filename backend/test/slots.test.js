@@ -2,14 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const slots = require('../services/slots');
 
-test('gera blocos de 15 minutos removendo pausas', () => {
+test('gera blocos de 15 minutos cobrindo o dia inteiro', () => {
   const blocos = slots.gerarBlocosDia();
 
   assert.equal(blocos[0], '08:00');
   assert.equal(blocos.at(-1), '16:15');
-  assert.equal(blocos.includes('09:45'), false);
-  assert.equal(blocos.includes('13:00'), false);
-  assert.equal(blocos.includes('15:00'), false);
+  assert.equal(blocos.includes('09:45'), true);
+  assert.equal(blocos.includes('13:00'), true);
+  assert.equal(blocos.includes('15:00'), true);
 });
 
 test('bloqueia finais de semana', () => {
