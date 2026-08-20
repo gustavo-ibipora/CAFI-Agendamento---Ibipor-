@@ -40,8 +40,6 @@ const mensagensObrigatorias = {
   nome_completo: 'Informe o nome completo do paciente.',
   data_nascimento: 'Informe a data de nascimento.',
   endereco: 'Informe o endereco residencial.',
-  telefone: 'Informe o telefone para contato.',
-  email: 'Informe o e-mail para confirmacao.',
   ubs: 'Selecione a UBS de referencia.',
   tipo_medicamento: 'Selecione o tipo de medicamento.',
   previsao_termino: 'Informe a previsao de termino da medicacao.',
@@ -528,20 +526,20 @@ export default function SchedulingPage() {
               </div>
 
               <div className="campo">
-                <label htmlFor="telefone">Telefone para contato (WhatsApp) <span className="etiqueta-obrigatorio">Obrigatório</span></label>
-                <input type="tel" id="telefone" className={classeCampo('telefone')} value={form.telefone} placeholder="(43) 90000-0000" maxLength="15" inputMode="tel" autoComplete="tel" required aria-invalid={Boolean(mensagemCampo('telefone'))} aria-describedby="telefone-erro" onBlur={() => marcarTocado('telefone')} onChange={(e) => atualizar('telefone', aplicarMascaraTelefone(e.target.value))} />
+                <label htmlFor="telefone">Telefone para contato (WhatsApp) <span className="etiqueta-opcional">Opcional</span></label>
+                <input type="tel" id="telefone" className={classeCampo('telefone')} value={form.telefone} placeholder="(43) 90000-0000" maxLength="15" inputMode="tel" autoComplete="tel" aria-invalid={Boolean(mensagemCampo('telefone'))} aria-describedby="telefone-erro" onBlur={() => marcarTocado('telefone')} onChange={(e) => atualizar('telefone', aplicarMascaraTelefone(e.target.value))} />
                 <p className="campo-erro-texto" id="telefone-erro">{mensagemCampo('telefone')}</p>
               </div>
 
               <div className="campo">
-                <label htmlFor="email">E-mail para confirmação <span className="etiqueta-obrigatorio">Obrigatório</span></label>
-                <input type="email" id="email" className={classeCampo('email')} value={form.email} maxLength="150" autoComplete="email" required aria-invalid={Boolean(mensagemCampo('email'))} aria-describedby="email-erro" onBlur={() => marcarTocado('email')} onChange={(e) => atualizar('email', e.target.value)} />
+                <label htmlFor="email">E-mail para confirmação <span className="etiqueta-opcional">Opcional</span></label>
+                <input type="email" id="email" className={classeCampo('email')} value={form.email} maxLength="150" autoComplete="email" aria-invalid={Boolean(mensagemCampo('email'))} aria-describedby="email-erro" onBlur={() => marcarTocado('email')} onChange={(e) => atualizar('email', e.target.value)} />
                 <p className="campo-erro-texto" id="email-erro">{mensagemCampo('email')}</p>
               </div>
             </div>
 
             {!etapaCompleta(3) && (
-              <p className="campo-ajuda aviso-submit">Preencha endereço, telefone e e-mail corretamente para continuar.</p>
+              <p className="campo-ajuda aviso-submit">Preencha o endereço corretamente para continuar. Telefone e e-mail são opcionais.</p>
             )}
 
             <div className="acoes acoes-navegacao">

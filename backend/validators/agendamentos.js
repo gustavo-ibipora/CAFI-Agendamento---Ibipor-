@@ -43,9 +43,10 @@ const agendamentoCamposSchema = z.object({
   cpf: z.string().transform((valor) => valor.replace(/\D/g, '')).refine(validarCPF, 'CPF invalido.'),
   data_nascimento: dataObrigatoria('Data de nascimento'),
   endereco: textoObrigatorio('Endereco', 255),
-  telefone: z.string().transform(textoSeguro).pipe(z.string().min(1, 'Telefone e obrigatorio.').max(20, 'Telefone deve ter no maximo 20 caracteres.'))
-    .refine((valor) => valor.replace(/\D/g, '').length >= 10, 'Telefone invalido.'),
-  email: z.string().transform(textoSeguro).pipe(z.string().min(1, 'E-mail e obrigatorio.').max(150, 'E-mail deve ter no maximo 150 caracteres.').email('E-mail invalido.')),
+  telefone: z.string().optional().transform(textoSeguro).pipe(z.string().max(20, 'Telefone deve ter no maximo 20 caracteres.'))
+    .refine((valor) => valor === '' || valor.replace(/\D/g, '').length >= 10, 'Telefone invalido.'),
+  email: z.string().optional().transform(textoSeguro).pipe(z.string().max(150, 'E-mail deve ter no maximo 150 caracteres.'))
+    .refine((valor) => valor === '' || z.string().email().safeParse(valor).success, 'E-mail invalido.'),
   ubs: textoObrigatorio('Unidade Basica de Saude', 100),
   tipo_medicamento: textoObrigatorio('Tipo de medicamento', 80),
   primeiro_atendimento: z.preprocess((valor) => {

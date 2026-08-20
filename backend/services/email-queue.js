@@ -8,6 +8,10 @@ const STATUS_ENVIADO = 'enviado';
 const STATUS_FALHA = 'falha';
 
 async function enfileirarConfirmacao(pool, agendamento) {
+  if (!agendamento.email) {
+    return { enviado: false, enfileirado: false, motivo: 'EMAIL_NAO_INFORMADO' };
+  }
+
   if (!smtpConfigurado()) {
     logger.warn('email.smtp_nao_configurado', {
       agendamentoId: agendamento.id,

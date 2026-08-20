@@ -153,8 +153,8 @@ export default function NovoAgendamentoModal({ open, dataInicial, opcoesUbs, opc
       return;
     }
     if (!cpfValido(form.cpf)) return setErro('Informe um CPF válido.');
-    if (!telefoneValido(form.telefone)) return setErro('Informe um telefone válido, com DDD.');
-    if (!emailValido(form.email)) return setErro('Informe um e-mail válido.');
+    if (form.telefone && !telefoneValido(form.telefone)) return setErro('Informe um telefone válido, com DDD.');
+    if (form.email && !emailValido(form.email)) return setErro('Informe um e-mail válido.');
     if (form.data_nascimento > hoje) return setErro('Data de nascimento não pode ser futura.');
     if (form.previsao_termino < hoje) return setErro('Previsão de término não pode ser no passado.');
     if (ehFimDeSemana(form.data_agendamento)) return setErro('A farmácia atende apenas de segunda a sexta.');
@@ -233,8 +233,8 @@ export default function NovoAgendamentoModal({ open, dataInicial, opcoesUbs, opc
           />
 
           <div className="campo">
-            <label htmlFor="na-telefone">Telefone <span className="etiqueta-obrigatorio">Obrigatório</span></label>
-            <input type="tel" id="na-telefone" value={form.telefone} placeholder="(43) 90000-0000" maxLength="15" inputMode="tel" required
+            <label htmlFor="na-telefone">Telefone <span className="etiqueta-opcional">Opcional</span></label>
+            <input type="tel" id="na-telefone" value={form.telefone} placeholder="(43) 90000-0000" maxLength="15" inputMode="tel"
               onChange={(e) => atualizar('telefone', aplicarMascaraTelefone(e.target.value))} />
           </div>
 
@@ -245,8 +245,8 @@ export default function NovoAgendamentoModal({ open, dataInicial, opcoesUbs, opc
           </div>
 
           <div className="campo">
-            <label htmlFor="na-email">E-mail <span className="etiqueta-obrigatorio">Obrigatório</span></label>
-            <input type="email" id="na-email" value={form.email} maxLength="150" required
+            <label htmlFor="na-email">E-mail <span className="etiqueta-opcional">Opcional</span></label>
+            <input type="email" id="na-email" value={form.email} maxLength="150"
               onChange={(e) => atualizar('email', e.target.value)} />
           </div>
 
