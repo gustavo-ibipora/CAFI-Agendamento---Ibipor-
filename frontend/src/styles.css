@@ -1342,6 +1342,17 @@ input.campo-valido {
   padding: 16px 0;
 }
 
+.reagendamento-aviso {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--amarelo);
+  border-radius: 6px;
+  background: var(--amarelo-claro);
+  color: var(--amarelo);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
 .modal-confirmacao {
   width: min(440px, 100%);
   margin-block: auto;

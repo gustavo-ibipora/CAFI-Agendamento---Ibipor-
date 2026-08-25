@@ -20,6 +20,16 @@ const ROTULOS_STATUS = {
   presente: 'Presente'
 };
 
+// Espelha STATUS_PRESERVA_HISTORICO do backend: reagendar nao move o registro,
+// cria um agendamento novo e deixa o desfecho no dia em que ele aconteceu.
+const STATUS_PRESERVA_HISTORICO = new Set(['atendido', 'faltou', 'cancelado']);
+
+const DESFECHO_POR_STATUS = {
+  atendido: { aviso: 'Este atendimento continua registrado', sucesso: 'O atendimento' },
+  faltou: { aviso: 'Esta falta continua registrada', sucesso: 'A falta' },
+  cancelado: { aviso: 'Este cancelamento continua registrado', sucesso: 'O cancelamento' }
+};
+
 const ITENS_POR_PAGINA = 10;
 const INTERVALO_ATUALIZACAO_MS = 8000;
 const DURACAO_DESTAQUE_MS = 1600;
@@ -395,10 +405,29 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     setErro('');
     setReagendamento((atual) => ({ ...atual, salvando: true }));
     try {
-      await apiJson(`/api/admin/agendamentos/${detalhe.id}/reagendar`, jsonOptions({
+      const resposta = await apiJson(`/api/admin/agendamentos/${detalhe.id}/reagendar`, jsonOptions({
         data_agendamento: reagendamento.data,
         horario: reagendamento.horario
       }, 'PATCH'));
+      const resultado = resposta?.resultado || {};
+
+      // Atendido, faltou e cancelado não são movidos: o registro fica no dia do desfecho
+      // e nasce um agendamento novo na data escolhida, então a agenda salta para essa data.
+      if (resultado.historicoPreservado) {
+        const nomePaciente = detalhe.nome_completo;
+        const desfecho = DESFECHO_POR_STATUS[resultado.statusOrigem];
+        fecharDetalhe();
+        setData(resultado.dataNova);
+        setDataTexto(dataIsoParaBr(resultado.dataNova));
+        await carregarAgenda(null, { data: resultado.dataNova, manterPagina: false });
+        if (resultado.novoAgendamentoId) destacarAgendamentos([resultado.novoAgendamentoId]);
+        mostrarMensagemInclusao(
+          `${nomePaciente} foi reagendado(a) para ${dataBrasil(resultado.dataNova)} às ${resultado.horarioNovo}.` +
+          (desfecho ? ` ${desfecho.sucesso} de ${dataBrasil(resultado.dataAnterior)} continua no registro daquele dia.` : '')
+        );
+        return;
+      }
+
       setDetalhe((atual) => ({ ...atual, data_agendamento: reagendamento.data, horario: reagendamento.horario }));
       await carregarAgenda(null, { manterPagina: true });
     } catch (err) {
@@ -420,6 +449,18 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     setNovoAgendamentoAberto(false);
   }
 
+  function destacarAgendamentos(ids) {
+    setIdsAtualizados(new Set(ids));
+    if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
+    destaqueTimeoutRef.current = setTimeout(() => setIdsAtualizados(new Set()), DURACAO_DESTAQUE_MS);
+  }
+
+  function mostrarMensagemInclusao(texto) {
+    setMensagemInclusao(texto);
+    if (mensagemInclusaoTimeoutRef.current) clearTimeout(mensagemInclusaoTimeoutRef.current);
+    mensagemInclusaoTimeoutRef.current = setTimeout(() => setMensagemInclusao(''), 6000);
+  }
+
   async function agendamentoCriado(resultado) {
     setNovoAgendamentoAberto(false);
     const agendamento = resultado.agendamento;
@@ -430,17 +471,12 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     }
     await carregarAgenda(null, { data: agendamento.data_agendamento, manterPagina: false });
 
-    setIdsAtualizados(new Set([agendamento.id]));
-    if (destaqueTimeoutRef.current) clearTimeout(destaqueTimeoutRef.current);
-    destaqueTimeoutRef.current = setTimeout(() => setIdsAtualizados(new Set()), DURACAO_DESTAQUE_MS);
-
-    setMensagemInclusao(
+    destacarAgendamentos([agendamento.id]);
+    mostrarMensagemInclusao(
       resultado.encaixe
         ? `${agendamento.nome_completo} foi incluído(a) com sucesso como encaixe, mesmo com a agenda cheia.`
         : `${agendamento.nome_completo} foi incluído(a) com sucesso na agenda.`
     );
-    if (mensagemInclusaoTimeoutRef.current) clearTimeout(mensagemInclusaoTimeoutRef.current);
-    mensagemInclusaoTimeoutRef.current = setTimeout(() => setMensagemInclusao(''), 6000);
   }
 
   function abrirDetalhe(agendamento) {
@@ -849,6 +885,12 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
 
             <form className="detalhes-secao reagendamento-form" onSubmit={salvarReagendamento}>
               <h3>Reagendamento</h3>
+              {STATUS_PRESERVA_HISTORICO.has(detalhe.status) && (
+                <p className="reagendamento-aviso">
+                  {DESFECHO_POR_STATUS[detalhe.status].aviso} em {dataBrasil(detalhe.data_agendamento)}. O reagendamento
+                  cria um <strong>novo agendamento</strong> na data escolhida, sem alterar a contagem daquele dia.
+                </p>
+              )}
               <div className="grade">
                 <CampoDataInput
                   id="r-data"
@@ -873,7 +915,9 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
                 </div>
               </div>
               <button type="submit" disabled={reagendamento.salvando || !reagendamento.data || !reagendamento.horario}>
-                {reagendamento.salvando ? 'Salvando...' : 'Salvar reagendamento'}
+                {reagendamento.salvando
+                  ? 'Salvando...'
+                  : STATUS_PRESERVA_HISTORICO.has(detalhe.status) ? 'Criar novo agendamento' : 'Salvar reagendamento'}
               </button>
             </form>
 

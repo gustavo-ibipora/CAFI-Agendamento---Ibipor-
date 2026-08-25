@@ -623,6 +623,8 @@ router.patch('/agendamentos/:id/reagendar', exigirLogin, asyncHandler(async (req
       horarioAnterior: resultado.horarioAnterior,
       dataNova: resultado.dataNova,
       horarioNovo: resultado.horarioNovo,
+      historicoPreservado: Boolean(resultado.historicoPreservado),
+      novoAgendamentoId: resultado.novoAgendamentoId || null,
       ...dadosRequisicao(req)
     });
     if (!resultado.semAlteracao) {
@@ -634,7 +636,9 @@ router.patch('/agendamentos/:id/reagendar', exigirLogin, asyncHandler(async (req
           dataAnterior: resultado.dataAnterior,
           horarioAnterior: resultado.horarioAnterior,
           dataNova: resultado.dataNova,
-          horarioNovo: resultado.horarioNovo
+          horarioNovo: resultado.horarioNovo,
+          // Reagendamento de atendido nao move o registro: gera um agendamento novo.
+          ...(resultado.historicoPreservado ? { novoAgendamentoId: resultado.novoAgendamentoId } : {})
         },
         ...dadosAuditoria(req)
       });

@@ -6,6 +6,11 @@ const LIMITE_ATB_DIA = 10;
 const INICIO = '08:00';
 const FIM = '16:15';
 const STATUS_OCUPA_VAGA = new Set(['confirmado', 'atendido', 'faltou', 'presente']);
+// Status que registram um desfecho do dia em que aconteceu. Reagendar um agendamento
+// nesse estado nao move o registro: o desfecho fica no dia original (mantendo a
+// contagem do relatorio daquele dia) e um novo agendamento 'confirmado' e criado
+// para a data escolhida.
+const STATUS_PRESERVA_HISTORICO = new Set(['atendido', 'faltou', 'cancelado']);
 let blocosDiaCache = null;
 
 function paraMinutos(hhmm) {
@@ -141,9 +146,12 @@ async function horariosDisponiveis(pool, data, primeiroAtendimento, agendamentoI
     .map((row) => {
       const horario = row.horario.slice(0, 5);
       let ocupadas = row.ocupadas;
+      // Um agendamento que preserva historico continua ocupando a vaga original mesmo
+      // apos o reagendamento, entao a vaga dele nao pode ser devolvida na simulacao.
       if (
         agendamentoIgnorado &&
         STATUS_OCUPA_VAGA.has(agendamentoIgnorado.status) &&
+        !STATUS_PRESERVA_HISTORICO.has(agendamentoIgnorado.status) &&
         dataBancoParaISO(agendamentoIgnorado.data_agendamento) === data &&
         agendamentoIgnorado.horario.slice(0, 5) === horario
       ) {
@@ -396,6 +404,83 @@ async function atualizarStatusAgendamento(pool, agendamentoId, novoStatus, admin
   }
 }
 
+// Cria um novo agendamento a partir de um ja existente, sem tocar no original.
+// Usado no reagendamento dos status que preservam historico (atendido, faltou, cancelado).
+async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adminId) {
+  const [duplicados] = await conn.query(
+    `SELECT COUNT(*) AS total
+     FROM agendamentos
+     WHERE cpf = ? AND data_agendamento = ? AND status IN ('confirmado', 'atendido', 'faltou')`,
+    [origem.cpf, dataNova]
+  );
+  if (duplicados[0].total > 0) {
+    const err = new Error('Este paciente ja possui um agendamento nesta data.');
+    err.codigo = 'LIMITE_DIARIO_PACIENTE';
+    throw err;
+  }
+
+  const [slotResult] = await conn.query(
+    `UPDATE slots_agenda
+     SET ocupadas = ocupadas + ?
+     WHERE data_agendamento = ? AND horario = ? AND ocupadas + ? <= capacidade`,
+    [origem.vagas_ocupadas, dataNova, horarioNovo, origem.vagas_ocupadas]
+  );
+  if (slotResult.affectedRows === 0) {
+    const err = new Error('Este horario nao possui vagas suficientes para reagendar.');
+    err.codigo = 'HORARIO_LOTADO';
+    throw err;
+  }
+
+  // O contador do dia de origem nao e mexido aqui: atendido/faltou ja consumiram a
+  // reserva daquele dia e o cancelamento ja devolveu a dele em atualizarStatusAgendamento.
+  if (origem.tipo_medicamento === 'Antibiotico') {
+    await garantirTabelaContadores(conn);
+    await conn.query(
+      `INSERT IGNORE INTO contadores_diarios (data, tipo, valor) VALUES (?, 'Antibiotico', 0)`,
+      [dataNova]
+    );
+    const [atbResult] = await conn.query(
+      `UPDATE contadores_diarios
+       SET valor = valor + 1
+       WHERE data = ? AND tipo = 'Antibiotico' AND valor < ?`,
+      [dataNova, LIMITE_ATB_DIA]
+    );
+    if (atbResult.affectedRows === 0) {
+      const err = new Error('O limite diario de retiradas de Antibiotico ja foi atingido nesse dia.');
+      err.codigo = 'LIMITE_ATB';
+      throw err;
+    }
+  }
+
+  const [resultado] = await conn.query(
+    `INSERT INTO agendamentos
+      (nome_completo, cpf, data_nascimento, endereco, telefone, email, ubs,
+       tipo_medicamento, primeiro_atendimento, previsao_termino, observacoes,
+       data_agendamento, horario, vagas_ocupadas, encaixe, status, receita_arquivo, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'confirmado', ?, ?)`,
+    [
+      origem.nome_completo,
+      origem.cpf,
+      origem.data_nascimento,
+      origem.endereco,
+      origem.telefone,
+      origem.email,
+      origem.ubs,
+      origem.tipo_medicamento,
+      origem.primeiro_atendimento,
+      origem.previsao_termino,
+      origem.observacoes,
+      dataNova,
+      horarioNovo,
+      origem.vagas_ocupadas,
+      origem.receita_arquivo,
+      adminId || null
+    ]
+  );
+
+  return resultado.insertId;
+}
+
 async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, adminId = null) {
   if (!ehDiaUtil(dataNova)) {
     const err = new Error('A farmacia so atende de segunda a sexta.');
@@ -418,7 +503,11 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     await conn.beginTransaction();
 
     const [rows] = await conn.query(
-      `SELECT id, data_agendamento, horario, vagas_ocupadas, status, tipo_medicamento
+      `SELECT id, nome_completo, cpf, endereco, telefone, email, ubs,
+              tipo_medicamento, primeiro_atendimento, observacoes, receita_arquivo,
+              DATE_FORMAT(data_nascimento, '%Y-%m-%d') AS data_nascimento,
+              DATE_FORMAT(previsao_termino, '%Y-%m-%d') AS previsao_termino,
+              data_agendamento, horario, vagas_ocupadas, status
        FROM agendamentos
        WHERE id = ?
        FOR UPDATE`,
@@ -433,10 +522,31 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     const dataAnterior = dataBancoParaISO(agendamento.data_agendamento);
     const horarioAnterior = agendamento.horario.slice(0, 5);
     const ocupaVaga = STATUS_OCUPA_VAGA.has(agendamento.status);
+    const preservaHistorico = STATUS_PRESERVA_HISTORICO.has(agendamento.status);
 
-    if (dataAnterior === dataNova && horarioAnterior === horarioNovo) {
+    // Repetir data e horario so e um "nada a fazer" quando o registro seria movido.
+    // Quem preserva historico gera um agendamento novo, entao o mesmo slot e valido.
+    if (dataAnterior === dataNova && horarioAnterior === horarioNovo && !preservaHistorico) {
       await conn.rollback();
       return { encontrado: true, semAlteracao: true, dataAnterior, horarioAnterior };
+    }
+
+    // Atendido, faltou ou cancelado: o registro do dia permanece intacto (continua
+    // contando no relatorio daquele dia) e o reagendamento vira um agendamento novo.
+    if (preservaHistorico) {
+      await garantirSlotsDia(conn, dataNova);
+      const novoAgendamentoId = await criarAgendamentoDerivado(conn, agendamento, dataNova, horarioNovo, adminId);
+      await conn.commit();
+      return {
+        encontrado: true,
+        historicoPreservado: true,
+        statusOrigem: agendamento.status,
+        novoAgendamentoId,
+        dataAnterior,
+        horarioAnterior,
+        dataNova,
+        horarioNovo
+      };
     }
 
     await garantirSlotsDia(conn, dataAnterior);
@@ -489,14 +599,20 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
       }
     }
 
+    // O agendamento volta a ser um compromisso futuro: marcas de chegada/atendimento
+    // do horario antigo nao podem viajar junto com ele.
     await conn.query(
-      "UPDATE agendamentos SET data_agendamento = ?, horario = ?, status = 'confirmado', updated_by = ? WHERE id = ?",
+      `UPDATE agendamentos
+       SET data_agendamento = ?, horario = ?, status = 'confirmado', updated_by = ?,
+           presente_por = NULL, presente_em = NULL, atendido_por = NULL, atendido_em = NULL
+       WHERE id = ?`,
       [dataNova, horarioNovo, adminId || null, agendamentoId]
     );
 
     await conn.commit();
     return {
       encontrado: true,
+      historicoPreservado: false,
       dataAnterior,
       horarioAnterior,
       dataNova,
