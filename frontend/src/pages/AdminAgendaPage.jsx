@@ -339,7 +339,10 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
       if (detalhe?.id === id) {
         setDetalhe((atual) => ({ ...atual, status }));
       }
-      await carregarAgenda(null, { manterPagina: true });
+      // Atualização no lugar em vez de carregarAgenda: esta esvazia a tabela antes de
+      // buscar, o que encolhe a página e faz o navegador jogar a rolagem pro topo —
+      // o operador perdia de vista o paciente que acabou de marcar.
+      await atualizarAgendaSilenciosa();
     } catch (err) {
       if (err.status === 401) {
         navigate('/admin/login');
