@@ -1342,6 +1342,10 @@ input.campo-valido {
   padding: 16px 0;
 }
 
+.reagendamento-form button[type='submit'] {
+  margin-top: 10px;
+}
+
 .reagendamento-aviso {
   margin: 0 0 12px;
   padding: 10px 12px;

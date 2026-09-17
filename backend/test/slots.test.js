@@ -307,6 +307,71 @@ test('reagendar confirmado continua movendo o agendamento e limpa marcas antigas
   assert.match(updatesSlot[0].sql, /GREATEST\(ocupadas - \?, 0\)/);
 });
 
+test('reagendar confirmado trocando para primeiro atendimento libera 1 vaga e reserva 2 na nova data', async () => {
+  const queries = [];
+  const conn = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
+    release() {},
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (sql.includes('INSERT IGNORE INTO slots_agenda')) return [{}];
+      if (sql.includes('FOR UPDATE')) return [[agendamentoBanco({ status: 'confirmado', primeiro_atendimento: 0, vagas_ocupadas: 1 })]];
+      if (sql.includes('UPDATE slots_agenda')) return [{ affectedRows: 1 }];
+      if (sql.includes('UPDATE agendamentos')) return [{ affectedRows: 1 }];
+      throw new Error(`SQL inesperado: ${sql}`);
+    }
+  };
+  const pool = criarPoolMock(conn);
+
+  const resultado = await slots.reagendarAgendamento(pool, 42, '2026-07-10', '09:00', 5, true);
+
+  assert.equal(resultado.historicoPreservado, false);
+
+  // Libera a 1 vaga antiga (nao a nova contagem) e reserva 2 vagas no horario novo.
+  const updatesSlot = queries.filter((q) => q.sql.includes('UPDATE slots_agenda'));
+  assert.deepEqual(updatesSlot[0].params, [1, '2026-07-06', '08:00']);
+  assert.deepEqual(updatesSlot[1].params, [2, '2026-07-10', '09:00', 2]);
+
+  const updateAgendamento = queries.find((q) => q.sql.includes('UPDATE agendamentos'));
+  assert.match(updateAgendamento.sql, /primeiro_atendimento = \?, vagas_ocupadas = \?/);
+  assert.deepEqual(updateAgendamento.params, ['2026-07-10', '09:00', 1, 2, 5, 42]);
+});
+
+test('reagendar atendido trocando para primeiro atendimento cria o agendamento derivado com 2 vagas', async () => {
+  const queries = [];
+  const conn = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
+    release() {},
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (sql.includes('INSERT IGNORE INTO slots_agenda')) return [{}];
+      if (sql.includes('FOR UPDATE')) return [[agendamentoBanco({ status: 'atendido', primeiro_atendimento: 0, vagas_ocupadas: 1 })]];
+      if (sql.includes('WHERE cpf = ? AND data_agendamento = ?')) return [[{ total: 0 }]];
+      if (sql.includes('UPDATE slots_agenda')) return [{ affectedRows: 1 }];
+      if (sql.includes('INSERT INTO agendamentos')) return [{ insertId: 900 }];
+      throw new Error(`SQL inesperado: ${sql}`);
+    }
+  };
+  const pool = criarPoolMock(conn);
+
+  const resultado = await slots.reagendarAgendamento(pool, 42, '2026-07-10', '09:00', 5, true);
+
+  assert.equal(resultado.historicoPreservado, true);
+  assert.equal(resultado.novoAgendamentoId, 900);
+
+  const updatesSlot = queries.filter((q) => q.sql.includes('UPDATE slots_agenda'));
+  assert.equal(updatesSlot.length, 1);
+  assert.deepEqual(updatesSlot[0].params, [2, '2026-07-10', '09:00', 2]);
+
+  const insertAgendamento = queries.find((q) => q.sql.includes('INSERT INTO agendamentos'));
+  assert.equal(insertAgendamento.params[8], 1); // primeiro_atendimento
+  assert.equal(insertAgendamento.params[13], 2); // vagas_ocupadas
+});
+
 test('horarios disponiveis nao devolvem a vaga de um agendamento ja atendido', async () => {
   const pool = {
     async query(sql) {

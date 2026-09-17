@@ -60,7 +60,12 @@ const filtrosAgendaSchema = z.object({
 
 const reagendamentoSchema = z.object({
   data_agendamento: z.string().refine(ehDataISO, 'Data do agendamento deve estar no formato YYYY-MM-DD.'),
-  horario: z.string().regex(/^\d{2}:\d{2}$/, 'Horario deve estar no formato HH:mm.')
+  horario: z.string().regex(/^\d{2}:\d{2}$/, 'Horario deve estar no formato HH:mm.'),
+  primeiro_atendimento: z.preprocess((valor) => {
+    if (valor === 'sim') return true;
+    if (valor === 'nao') return false;
+    return valor;
+  }, z.boolean({ message: 'Informe se e o primeiro atendimento.' })).optional()
 }).strict();
 
 const novoAgendamentoAdminSchema = agendamentoCamposSchema

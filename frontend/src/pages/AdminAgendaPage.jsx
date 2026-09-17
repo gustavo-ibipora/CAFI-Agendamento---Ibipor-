@@ -67,7 +67,7 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   const [carregando, setCarregando] = useState(false);
   const [saindo, setSaindo] = useState(false);
   const [detalhe, setDetalhe] = useState(null);
-  const [reagendamento, setReagendamento] = useState({ data: data, horario: '', horarios: [], carregando: false, salvando: false });
+  const [reagendamento, setReagendamento] = useState({ data: data, horario: '', primeiroAtendimento: 'nao', horarios: [], carregando: false, salvando: false });
   const [ordenacao, setOrdenacao] = useState({ coluna: 'horario', direcao: 'asc' });
   const [paginaAgenda, setPaginaAgenda] = useState(1);
   const [confirmacao, setConfirmacao] = useState(null);
@@ -141,8 +141,16 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
   useEffect(() => {
     if (detalhe) {
       const dataDetalhe = String(detalhe.data_agendamento || data).slice(0, 10);
-      setReagendamento({ data: dataDetalhe, horario: String(detalhe.horario || '').slice(0, 5), horarios: [], carregando: false, salvando: false });
-      carregarHorariosReagendamento(dataDetalhe, detalhe);
+      const primeiroAtendimentoDetalhe = detalhe.primeiro_atendimento ? 'sim' : 'nao';
+      setReagendamento({
+        data: dataDetalhe,
+        horario: String(detalhe.horario || '').slice(0, 5),
+        primeiroAtendimento: primeiroAtendimentoDetalhe,
+        horarios: [],
+        carregando: false,
+        salvando: false
+      });
+      carregarHorariosReagendamento(dataDetalhe, primeiroAtendimentoDetalhe);
     }
   }, [detalhe]);
 
@@ -383,15 +391,15 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     window.location.href = `/api/admin/agendamentos/exportar?${params.toString()}`;
   }
 
-  async function carregarHorariosReagendamento(dataSelecionada, agendamento = detalhe) {
-    if (!agendamento || !dataSelecionada) return;
+  async function carregarHorariosReagendamento(dataSelecionada, primeiroAtendimentoSelecionado = reagendamento.primeiroAtendimento) {
+    if (!detalhe || !dataSelecionada) return;
 
     setReagendamento((atual) => ({ ...atual, data: dataSelecionada, carregando: true, horarios: [] }));
     try {
       const params = new URLSearchParams({
         data: dataSelecionada,
-        primeiroAtendimento: String(Boolean(agendamento.primeiro_atendimento)),
-        agendamentoId: String(agendamento.id)
+        primeiroAtendimento: String(primeiroAtendimentoSelecionado === 'sim'),
+        agendamentoId: String(detalhe.id)
       });
       const dados = await apiJson(`/api/admin/horarios-disponiveis?${params.toString()}`);
       setReagendamento((atual) => ({ ...atual, horarios: dados.blocos || [], carregando: false }));
@@ -410,7 +418,8 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
     try {
       const resposta = await apiJson(`/api/admin/agendamentos/${detalhe.id}/reagendar`, jsonOptions({
         data_agendamento: reagendamento.data,
-        horario: reagendamento.horario
+        horario: reagendamento.horario,
+        primeiro_atendimento: reagendamento.primeiroAtendimento === 'sim'
       }, 'PATCH'));
       const resultado = resposta?.resultado || {};
 
@@ -431,7 +440,12 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
         return;
       }
 
-      setDetalhe((atual) => ({ ...atual, data_agendamento: reagendamento.data, horario: reagendamento.horario }));
+      setDetalhe((atual) => ({
+        ...atual,
+        data_agendamento: reagendamento.data,
+        horario: reagendamento.horario,
+        primeiro_atendimento: reagendamento.primeiroAtendimento === 'sim'
+      }));
       await carregarAgenda(null, { manterPagina: true });
     } catch (err) {
       if (err.status === 401) {
@@ -915,6 +929,35 @@ export default function AdminAgendaPage({ setHeaderNav, setCanManageUsers, abaIn
                       </option>
                     ))}
                   </select>
+                </div>
+              </div>
+              <div className="campo">
+                <label>Primeiro atendimento?</label>
+                <div className="radio-grupo">
+                  <label>
+                    <input
+                      type="radio"
+                      name="r-primeiro"
+                      value="sim"
+                      checked={reagendamento.primeiroAtendimento === 'sim'}
+                      onChange={(e) => {
+                        setReagendamento((atual) => ({ ...atual, primeiroAtendimento: e.target.value, horario: '' }));
+                        carregarHorariosReagendamento(reagendamento.data, e.target.value);
+                      }}
+                    /> Sim
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="r-primeiro"
+                      value="nao"
+                      checked={reagendamento.primeiroAtendimento === 'nao'}
+                      onChange={(e) => {
+                        setReagendamento((atual) => ({ ...atual, primeiroAtendimento: e.target.value, horario: '' }));
+                        carregarHorariosReagendamento(reagendamento.data, e.target.value);
+                      }}
+                    /> Não
+                  </label>
                 </div>
               </div>
               <button type="submit" disabled={reagendamento.salvando || !reagendamento.data || !reagendamento.horario}>

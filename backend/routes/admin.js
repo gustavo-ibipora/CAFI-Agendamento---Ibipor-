@@ -610,7 +610,8 @@ router.patch('/agendamentos/:id/reagendar', exigirLogin, asyncHandler(async (req
       idValidacao.dados.id,
       validacao.dados.data_agendamento,
       validacao.dados.horario,
-      req.session.adminId
+      req.session.adminId,
+      validacao.dados.primeiro_atendimento
     );
     if (!resultado.encontrado) {
       throw new AppError(404, 'Agendamento nao encontrado.', 'AGENDAMENTO_NAO_ENCONTRADO');

@@ -406,7 +406,12 @@ async function atualizarStatusAgendamento(pool, agendamentoId, novoStatus, admin
 
 // Cria um novo agendamento a partir de um ja existente, sem tocar no original.
 // Usado no reagendamento dos status que preservam historico (atendido, faltou, cancelado).
-async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adminId) {
+async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adminId, primeiroAtendimentoNovo = null) {
+  const primeiroAtendimentoFinal = primeiroAtendimentoNovo === null || primeiroAtendimentoNovo === undefined
+    ? Boolean(origem.primeiro_atendimento)
+    : Boolean(primeiroAtendimentoNovo);
+  const vagasNecessarias = primeiroAtendimentoFinal ? 2 : 1;
+
   const [duplicados] = await conn.query(
     `SELECT COUNT(*) AS total
      FROM agendamentos
@@ -423,7 +428,7 @@ async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adm
     `UPDATE slots_agenda
      SET ocupadas = ocupadas + ?
      WHERE data_agendamento = ? AND horario = ? AND ocupadas + ? <= capacidade`,
-    [origem.vagas_ocupadas, dataNova, horarioNovo, origem.vagas_ocupadas]
+    [vagasNecessarias, dataNova, horarioNovo, vagasNecessarias]
   );
   if (slotResult.affectedRows === 0) {
     const err = new Error('Este horario nao possui vagas suficientes para reagendar.');
@@ -467,12 +472,12 @@ async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adm
       origem.email,
       origem.ubs,
       origem.tipo_medicamento,
-      origem.primeiro_atendimento,
+      primeiroAtendimentoFinal ? 1 : 0,
       origem.previsao_termino,
       origem.observacoes,
       dataNova,
       horarioNovo,
-      origem.vagas_ocupadas,
+      vagasNecessarias,
       origem.receita_arquivo,
       adminId || null
     ]
@@ -481,7 +486,7 @@ async function criarAgendamentoDerivado(conn, origem, dataNova, horarioNovo, adm
   return resultado.insertId;
 }
 
-async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, adminId = null) {
+async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, adminId = null, primeiroAtendimentoNovo = null) {
   if (!ehDiaUtil(dataNova)) {
     const err = new Error('A farmacia so atende de segunda a sexta.');
     err.codigo = 'DIA_INVALIDO';
@@ -523,10 +528,15 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     const horarioAnterior = agendamento.horario.slice(0, 5);
     const ocupaVaga = STATUS_OCUPA_VAGA.has(agendamento.status);
     const preservaHistorico = STATUS_PRESERVA_HISTORICO.has(agendamento.status);
+    const primeiroAtendimentoFinal = primeiroAtendimentoNovo === null || primeiroAtendimentoNovo === undefined
+      ? Boolean(agendamento.primeiro_atendimento)
+      : Boolean(primeiroAtendimentoNovo);
+    const primeiroAtendimentoMudou = primeiroAtendimentoFinal !== Boolean(agendamento.primeiro_atendimento);
+    const vagasNecessarias = primeiroAtendimentoFinal ? 2 : 1;
 
-    // Repetir data e horario so e um "nada a fazer" quando o registro seria movido.
-    // Quem preserva historico gera um agendamento novo, entao o mesmo slot e valido.
-    if (dataAnterior === dataNova && horarioAnterior === horarioNovo && !preservaHistorico) {
+    // Repetir data e horario so e um "nada a fazer" quando o registro seria movido e
+    // ninguem mexeu se e primeiro atendimento (isso muda quantas vagas ele ocupa).
+    if (dataAnterior === dataNova && horarioAnterior === horarioNovo && !preservaHistorico && !primeiroAtendimentoMudou) {
       await conn.rollback();
       return { encontrado: true, semAlteracao: true, dataAnterior, horarioAnterior };
     }
@@ -535,7 +545,7 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     // contando no relatorio daquele dia) e o reagendamento vira um agendamento novo.
     if (preservaHistorico) {
       await garantirSlotsDia(conn, dataNova);
-      const novoAgendamentoId = await criarAgendamentoDerivado(conn, agendamento, dataNova, horarioNovo, adminId);
+      const novoAgendamentoId = await criarAgendamentoDerivado(conn, agendamento, dataNova, horarioNovo, adminId, primeiroAtendimentoFinal);
       await conn.commit();
       return {
         encontrado: true,
@@ -564,7 +574,7 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
         `UPDATE slots_agenda
          SET ocupadas = ocupadas + ?
          WHERE data_agendamento = ? AND horario = ? AND ocupadas + ? <= capacidade`,
-        [agendamento.vagas_ocupadas, dataNova, horarioNovo, agendamento.vagas_ocupadas]
+        [vagasNecessarias, dataNova, horarioNovo, vagasNecessarias]
       );
       if (slotResult.affectedRows === 0) {
         const err = new Error('Este horario nao possui vagas suficientes para reagendar.');
@@ -603,10 +613,11 @@ async function reagendarAgendamento(pool, agendamentoId, dataNova, horarioNovo, 
     // do horario antigo nao podem viajar junto com ele.
     await conn.query(
       `UPDATE agendamentos
-       SET data_agendamento = ?, horario = ?, status = 'confirmado', updated_by = ?,
+       SET data_agendamento = ?, horario = ?, primeiro_atendimento = ?, vagas_ocupadas = ?,
+           status = 'confirmado', updated_by = ?,
            presente_por = NULL, presente_em = NULL, atendido_por = NULL, atendido_em = NULL
        WHERE id = ?`,
-      [dataNova, horarioNovo, adminId || null, agendamentoId]
+      [dataNova, horarioNovo, primeiroAtendimentoFinal ? 1 : 0, vagasNecessarias, adminId || null, agendamentoId]
     );
 
     await conn.commit();
